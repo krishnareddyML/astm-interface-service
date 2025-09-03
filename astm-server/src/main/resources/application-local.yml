@@ -1,0 +1,43 @@
+# Local Development Environment Configuration
+# This profile is for local development with minimal external dependencies
+
+# Local-specific configuration
+lis:
+  instruments:
+    - name: OrthoVision
+      port: 9001
+      driverClassName: com.lis.astm.server.driver.impl.OrthoVisionDriver
+      maxConnections: 5
+      enabled: true  # Enable for local testing
+      connectionTimeoutSeconds: 30  # Shorter timeout for local testing
+      keepAliveIntervalMinutes: 5  # Send keep-alive every 5 minutes for testing
+      orderQueueName: lis.orders.outbound.orthoVision
+      resultQueueName: lis.results.inbound.orthoVision
+      
+  # Local messaging configuration (disabled for local development)
+  messaging:
+    enabled: false  # Disable RabbitMQ for local development
+    defaultOrderQueuePrefix: lis.orders.outbound.
+    resultQueueName: lis.results.inbound
+    exchangeName: lis.exchange
+
+# Local RabbitMQ Configuration (for when messaging is enabled)
+spring:
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+# Local Logging Configuration
+logging:
+  level:
+    "[com.lis.astm]": DEBUG  # More verbose logging for development
+    "[org.springframework.amqp]": WARN
+    "[org.springframework.boot]": WARN
+  file:
+    name: D:/astm-interface-services-data/logs/astm-interface-service-local.log
+
+# Local Server Configuration
+server:
+  port: 8080

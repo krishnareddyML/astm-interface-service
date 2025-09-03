@@ -1,0 +1,243 @@
+package com.lis.astm.server.messaging;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.lis.astm.model.AstmMessage;
+import com.lis.astm.server.config.AppConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+/**
+ * Service for publishing ASTM result messages to the message queue
+ * Sends parsed result data to the Core LIS via RabbitMQ
+ */
+@Component
+public class ResultQueuePublisher {
+
+    private static final Logger logger = LoggerFactory.getLogger(ResultQueuePublisher.class);
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+    @Autowired
+    private AppConfig appConfig;
+
+    private final ObjectMapper objectMapper;
+
+    public ResultQueuePublisher() {
+        this.objectMapper = new ObjectMapper();
+        this.objectMapper.registerModule(new JavaTimeModule());
+    }
+
+    /**
+     * Publish an ASTM result message to the instrument-specific results queue
+     *
+     * @param astmMessage the parsed ASTM message containing results
+     */
+    public void publishResult(AstmMessage astmMessage) {
+        if (astmMessage == null) {
+            logger.warn("Cannot publish null ASTM message");
+            return;
+        }
+
+        if (appConfig.getMessaging() == null || !appConfig.getMessaging().isEnabled()) {
+            logger.debug("Messaging is disabled, skipping result publication for instrument: {}", 
+                        astmMessage.getInstrumentName());
+            return;
+        }
+
+        try {
+            // Find the instrument configuration to get the correct result queue
+            AppConfig.InstrumentConfig instrumentConfig = findInstrumentConfig(astmMessage.getInstrumentName());
+            if (instrumentConfig == null) {
+                logger.error("No configuration found for instrument: {}", astmMessage.getInstrumentName());
+                return;
+            }
+
+            // Convert ASTM message to JSON
+            String messageJson = objectMapper.writeValueAsString(astmMessage);
+
+            // Get instrument-specific result queue name
+            String queueName = instrumentConfig.getEffectiveResultQueueName(appConfig.getMessaging());
+            String exchangeName = appConfig.getMessaging().getExchangeName();
+
+            // Publish to queue
+            if (exchangeName != null && !exchangeName.trim().isEmpty()) {
+                // Use exchange-based routing
+                rabbitTemplate.convertAndSend(exchangeName, queueName, messageJson, message -> {
+                    // Add custom headers
+                    message.getMessageProperties().setHeader("instrumentName", astmMessage.getInstrumentName());
+                    message.getMessageProperties().setHeader("messageType", astmMessage.getMessageType());
+                    message.getMessageProperties().setHeader("resultCount", astmMessage.getResultCount());
+                    message.getMessageProperties().setHeader("orderCount", astmMessage.getOrderCount());
+                    message.getMessageProperties().setHeader("timestamp", System.currentTimeMillis());
+                    return message;
+                });
+            } else {
+                // Direct queue publishing
+                rabbitTemplate.convertAndSend(queueName, messageJson, message -> {
+                    // Add custom headers
+                    message.getMessageProperties().setHeader("instrumentName", astmMessage.getInstrumentName());
+                    message.getMessageProperties().setHeader("messageType", astmMessage.getMessageType());
+                    message.getMessageProperties().setHeader("resultCount", astmMessage.getResultCount());
+                    message.getMessageProperties().setHeader("orderCount", astmMessage.getOrderCount());
+                    message.getMessageProperties().setHeader("timestamp", System.currentTimeMillis());
+                    return message;
+                });
+            }
+
+            logger.info("Successfully published ASTM message to instrument-specific queue '{}' from instrument '{}': {} results, {} orders",
+                       queueName, astmMessage.getInstrumentName(), 
+                       astmMessage.getResultCount(), astmMessage.getOrderCount());
+
+        } catch (Exception e) {
+            logger.error("Failed to publish ASTM message from instrument '{}' to queue: {}", 
+                        astmMessage.getInstrumentName(), e.getMessage(), e);
+            
+            // Optionally implement retry mechanism or dead letter queue handling here
+            handlePublishError(astmMessage, e);
+        }
+    }
+
+    /**
+     * Publish a simple status message to instrument-specific queue
+     *
+     * @param instrumentName the name of the instrument
+     * @param status the status message
+     */
+    public void publishStatus(String instrumentName, String status) {
+        if (appConfig.getMessaging() == null || !appConfig.getMessaging().isEnabled()) {
+            return;
+        }
+
+        try {
+            // Find the instrument configuration to get the correct result queue
+            AppConfig.InstrumentConfig instrumentConfig = findInstrumentConfig(instrumentName);
+            if (instrumentConfig == null) {
+                logger.warn("No configuration found for instrument: {}, using default queue", instrumentName);
+                // Fall back to default result queue
+                publishStatusToQueue(instrumentName, status, appConfig.getMessaging().getResultQueueName() + ".status");
+                return;
+            }
+
+            // Use instrument-specific result queue with .status suffix
+            String queueName = instrumentConfig.getEffectiveResultQueueName(appConfig.getMessaging()) + ".status";
+            publishStatusToQueue(instrumentName, status, queueName);
+
+        } catch (Exception e) {
+            logger.error("Failed to publish status message from instrument '{}': {}", 
+                        instrumentName, e.getMessage());
+        }
+    }
+
+    /**
+     * Helper method to publish status to a specific queue
+     */
+    private void publishStatusToQueue(String instrumentName, String status, String queueName) {
+        try {
+            StatusMessage statusMessage = new StatusMessage(instrumentName, status, System.currentTimeMillis());
+            String messageJson = objectMapper.writeValueAsString(statusMessage);
+            
+            rabbitTemplate.convertAndSend(queueName, messageJson, message -> {
+                message.getMessageProperties().setHeader("messageType", "STATUS");
+                message.getMessageProperties().setHeader("instrumentName", instrumentName);
+                return message;
+            });
+
+            logger.debug("Published status message from instrument '{}' to queue '{}': {}", 
+                        instrumentName, queueName, status);
+        } catch (Exception e) {
+            logger.error("Failed to publish status message from instrument '{}' to queue '{}': {}", 
+                        instrumentName, queueName, e.getMessage());
+        }
+    }
+
+    /**
+     * Handle publication errors
+     * Could implement retry logic, dead letter queue, or other error handling strategies
+     */
+    private void handlePublishError(AstmMessage astmMessage, Exception error) {
+        logger.error("Message publication failed for instrument '{}'. Error: {}", 
+                    astmMessage.getInstrumentName(), error.getMessage());
+        
+        // Error handling strategies can be implemented here in the future
+    }
+
+    /**
+     * Test the message queue connection
+     */
+    public boolean testConnection() {
+        try {
+            // Send a simple test message
+            String testMessage = "{\"test\": true, \"timestamp\": " + System.currentTimeMillis() + "}";
+            String queueName = appConfig.getMessaging().getResultQueueName() + ".test";
+            
+            rabbitTemplate.convertAndSend(queueName, testMessage);
+            logger.info("Successfully sent test message to queue: {}", queueName);
+            return true;
+            
+        } catch (Exception e) {
+            logger.error("Failed to send test message to queue: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get publishing statistics
+     */
+    public PublishingStats getStats() {
+        // Statistics tracking can be implemented here in the future
+        return new PublishingStats();
+    }
+
+    /**
+     * Find instrument configuration by name
+     */
+    private AppConfig.InstrumentConfig findInstrumentConfig(String instrumentName) {
+        if (instrumentName == null || appConfig.getInstruments() == null) {
+            return null;
+        }
+        
+        return appConfig.getInstruments().stream()
+                .filter(config -> instrumentName.equals(config.getName()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * Simple status message class
+     */
+    private static class StatusMessage {
+        private String instrumentName;
+        private String status;
+        private long timestamp;
+
+        public StatusMessage(String instrumentName, String status, long timestamp) {
+            this.instrumentName = instrumentName;
+            this.status = status;
+            this.timestamp = timestamp;
+        }
+
+        // Getters for JSON serialization
+        public String getInstrumentName() { return instrumentName; }
+        public String getStatus() { return status; }
+        public long getTimestamp() { return timestamp; }
+    }
+
+    /**
+     * Publishing statistics class
+     */
+    public static class PublishingStats {
+        private long totalPublished = 0;
+        private long totalErrors = 0;
+        private long lastPublishTime = 0;
+
+        // Getters
+        public long getTotalPublished() { return totalPublished; }
+        public long getTotalErrors() { return totalErrors; }
+        public long getLastPublishTime() { return lastPublishTime; }
+    }
+}

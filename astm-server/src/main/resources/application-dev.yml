@@ -1,0 +1,44 @@
+# Development Environment Configuration
+# This profile is for shared development environment with full messaging enabled
+
+# Development-specific configuration
+lis:
+  instruments:
+    - name: OrthoVision
+      port: 9001
+      enabled: true  # Enable for development testing
+      keepAliveIntervalMinutes: 30  # Keep-alive every 30 minutes for development
+      driverClassName: com.lis.astm.server.driver.impl.OrthoVisionDriver
+    
+  
+  # Development messaging configuration (enabled for integration testing)
+  messaging:
+    enabled: true  # Enable RabbitMQ for development
+
+# Development RabbitMQ Configuration
+spring:
+  rabbitmq:
+    host: dev-rabbitmq.internal  # Development RabbitMQ server
+    port: 5672
+    username: ${RABBITMQ_USERNAME:dev_user}
+    password: ${RABBITMQ_PASSWORD:dev_password}
+
+# Development Logging Configuration
+logging:
+  level:
+    "[com.lis.astm]": INFO  # Standard logging for development
+    "[org.springframework.amqp]": WARN
+    "[org.springframework.boot]": WARN
+  file:
+    name: logs/astm-interface-service-dev.log
+
+# Development Server Configuration
+server:
+  port: 8080
+
+# Development Database Configuration (if needed in future)
+# spring:
+#   datasource:
+#     url: jdbc:postgresql://dev-db.internal:5432/lis_dev
+#     username: ${DB_USERNAME:lis_dev_user}
+#     password: ${DB_PASSWORD:lis_dev_password}

@@ -1,0 +1,57 @@
+# Production Environment Configuration
+# This profile is for production deployment with high availability and security
+
+# Production-specific configuration
+lis:
+  instruments:
+    - name: OrthoVision
+      port: 9001
+      enabled: true
+      maxConnections: 10  # Higher connection pool for production
+      connectionTimeoutSeconds: 60  # Longer timeout for production stability
+      keepAliveIntervalMinutes: 60  # Keep-alive every hour for production VISION® systems
+    
+  
+  # Production messaging configuration (fully enabled)
+  messaging:
+    enabled: true  # Enable RabbitMQ for production
+
+# Production RabbitMQ Configuration
+spring:
+  rabbitmq:
+    host: ${RABBITMQ_HOST:prod-rabbitmq.internal}  # Production RabbitMQ cluster
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}  # Must be provided via environment variables
+    password: ${RABBITMQ_PASSWORD}  # Must be provided via environment variables
+    connection-timeout: 60s  # Longer timeout for production
+    requested-heartbeat: 30s  # More frequent heartbeat for production monitoring
+
+# Production Logging Configuration
+logging:
+  level:
+    "[com.lis.astm]": INFO  # Standard production logging
+    "[org.springframework.amqp]": WARN
+    "[org.springframework.boot]": ERROR  # Only errors for Spring Boot in production
+    "[org.springframework.security]": WARN
+    root: WARN  # Conservative logging for production
+  file:
+    name: /var/log/lis/astm-interface-service.log  # Standard production log location
+
+# Production Server Configuration
+server:
+  port: ${SERVER_PORT:8080}
+  # Production security headers
+  servlet:
+    context-path: /astm-interface
+
+# Production Database Configuration (if needed in future)
+# spring:
+#   datasource:
+#     url: ${DATABASE_URL:jdbc:postgresql://prod-db.internal:5432/lis_prod}
+#     username: ${DB_USERNAME}
+#     password: ${DB_PASSWORD}
+#     hikari:
+#       maximum-pool-size: 20
+#       connection-timeout: 30000
+#       idle-timeout: 300000
+#       max-lifetime: 900000
