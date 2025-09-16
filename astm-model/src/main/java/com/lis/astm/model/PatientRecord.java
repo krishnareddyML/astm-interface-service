@@ -2,6 +2,8 @@ package com.lis.astm.model;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
@@ -24,6 +26,8 @@ import java.time.LocalDateTime;
  * - Field 15: Patient's Birth Name
  * - Fields 16-35: All Unused
  */
+@Data
+@NoArgsConstructor
 public class PatientRecord {
     
     @JsonProperty("recordType")
@@ -134,10 +138,6 @@ public class PatientRecord {
     @JsonProperty("dosageCategory")
     private String dosageCategory; // Unused per specification
     
-    // Constructors
-    public PatientRecord() {
-    }
-    
     public PatientRecord(String practiceAssignedPatientId, String patientName) {
         this.practiceAssignedPatientId = practiceAssignedPatientId;
         this.patientName = patientName;
@@ -148,49 +148,26 @@ public class PatientRecord {
      * @param practiceAssignedPatientId Primary patient ID
      * @param lastName Patient's last name
      * @param firstName Patient's first name
-     * @param middleInitial Patient's middle initial
+     * @param middleName Patient's middle name
+     * @param suffix Patient's name suffix
+     * @param title Patient's title
      */
-    public PatientRecord(String practiceAssignedPatientId, String lastName, String firstName, String middleInitial) {
+    public PatientRecord(String practiceAssignedPatientId, String lastName, String firstName, String middleName, String suffix, String title) {
         this.practiceAssignedPatientId = practiceAssignedPatientId;
-        this.patientName = buildPatientName(lastName, firstName, middleInitial, null, null);
+        this.patientName = buildPatientName(lastName, firstName, middleName, suffix, title);
     }
     
     /**
      * Builds the composite patient name field according to ASTM specification
      * Format: Last^First^Middle^Suffix^Title
      */
-    private String buildPatientName(String lastName, String firstName, String middleInitial, String suffix, String title) {
+    private String buildPatientName(String lastName, String firstName, String middleName, String suffix, String title) {
         return String.join("^", 
             lastName != null ? lastName : "",
             firstName != null ? firstName : "",
-            middleInitial != null ? middleInitial : "",
+            middleName != null ? middleName : "",
             suffix != null ? suffix : "",
             title != null ? title : ""
-        );
-    }
-    
-    /**
-     * Builds the composite patient ID alternate field according to ASTM specification
-     * Format: National ID^Medical Record^Other ID
-     */
-    private String buildPatientIdAlternate(String nationalId, String medicalRecord, String otherId) {
-        return String.join("^", 
-            nationalId != null ? nationalId : "",
-            medicalRecord != null ? medicalRecord : "",
-            otherId != null ? otherId : ""
-        );
-    }
-    
-    /**
-     * Builds the composite attending physician field according to ASTM specification
-     * Format: ID^Last^First^Middle
-     */
-    private String buildAttendingPhysician(String physicianId, String lastName, String firstName, String middleInitial) {
-        return String.join("^", 
-            physicianId != null ? physicianId : "",
-            lastName != null ? lastName : "",
-            firstName != null ? firstName : "",
-            middleInitial != null ? middleInitial : ""
         );
     }
     
@@ -198,17 +175,17 @@ public class PatientRecord {
      * Utility method to set patient name components
      * @param lastName Patient's last name
      * @param firstName Patient's first name
-     * @param middleInitial Patient's middle initial
-     * @param suffix Patient's suffix (unused but kept for completeness)
-     * @param title Patient's title (unused but kept for completeness)
+     * @param middleName Patient's middle name
+     * @param suffix Patient's name suffix
+     * @param title Patient's title
      */
-    public void setPatientNameComponents(String lastName, String firstName, String middleInitial, String suffix, String title) {
-        this.patientName = buildPatientName(lastName, firstName, middleInitial, suffix, title);
+    public void setPatientNameComponents(String lastName, String firstName, String middleName, String suffix, String title) {
+        this.patientName = buildPatientName(lastName, firstName, middleName, suffix, title);
     }
     
     /**
      * Utility method to get patient name components
-     * @return Array containing [lastName, firstName, middleInitial, suffix, title]
+     * @return Array containing [lastName, firstName, middleName, suffix, title]
      */
     public String[] getPatientNameComponents() {
         if (patientName == null) {
@@ -223,45 +200,24 @@ public class PatientRecord {
     }
     
     /**
-     * Utility method to set patient ID alternate components
-     * @param nationalId National ID
-     * @param medicalRecord Medical Record
-     * @param otherId Other ID
-     */
-    public void setPatientIdAlternateComponents(String nationalId, String medicalRecord, String otherId) {
-        this.patientIdAlternate = buildPatientIdAlternate(nationalId, medicalRecord, otherId);
-    }
-    
-    /**
-     * Utility method to get patient ID alternate components
-     * @return Array containing [nationalId, medicalRecord, otherId]
-     */
-    public String[] getPatientIdAlternateComponents() {
-        if (patientIdAlternate == null) {
-            return new String[]{"", "", ""};
-        }
-        String[] components = patientIdAlternate.split("\\^", 3);
-        String[] result = new String[3];
-        for (int i = 0; i < 3; i++) {
-            result[i] = i < components.length ? components[i] : "";
-        }
-        return result;
-    }
-    
-    /**
      * Utility method to set attending physician components
      * @param physicianId Physician ID
      * @param lastName Physician's last name
      * @param firstName Physician's first name
-     * @param middleInitial Physician's middle initial
+     * @param middleName Physician's middle name
      */
-    public void setAttendingPhysicianComponents(String physicianId, String lastName, String firstName, String middleInitial) {
-        this.attendingPhysicianId = buildAttendingPhysician(physicianId, lastName, firstName, middleInitial);
+    public void setAttendingPhysicianComponents(String physicianId, String lastName, String firstName, String middleName) {
+        this.attendingPhysicianId = String.join("^",
+            physicianId != null ? physicianId : "",
+            lastName != null ? lastName : "",
+            firstName != null ? firstName : "",
+            middleName != null ? middleName : ""
+        );
     }
     
     /**
      * Utility method to get attending physician components
-     * @return Array containing [physicianId, lastName, firstName, middleInitial]
+     * @return Array containing [physicianId, lastName, firstName, middleName]
      */
     public String[] getAttendingPhysicianComponents() {
         if (attendingPhysicianId == null) {
@@ -275,297 +231,33 @@ public class PatientRecord {
         return result;
     }
     
-    // Getters and Setters
-    public String getRecordType() {
-        return recordType;
-    }
-    
-    public void setRecordType(String recordType) {
-        this.recordType = recordType;
-    }
-    
-    public Integer getSequenceNumber() {
-        return sequenceNumber;
-    }
-    
-    public void setSequenceNumber(Integer sequenceNumber) {
-        this.sequenceNumber = sequenceNumber;
-    }
-    
-    public String getPracticeAssignedPatientId() {
-        return practiceAssignedPatientId;
-    }
-    
-    public void setPracticeAssignedPatientId(String practiceAssignedPatientId) {
-        this.practiceAssignedPatientId = practiceAssignedPatientId;
-    }
-    
-    public String getLaboratoryAssignedPatientId() {
-        return laboratoryAssignedPatientId;
-    }
-    
-    public void setLaboratoryAssignedPatientId(String laboratoryAssignedPatientId) {
-        this.laboratoryAssignedPatientId = laboratoryAssignedPatientId;
-    }
-    
-    public String getPatientIdAlternate() {
-        return patientIdAlternate;
-    }
-    
-    public void setPatientIdAlternate(String patientIdAlternate) {
-        this.patientIdAlternate = patientIdAlternate;
-    }
-    
-    public String getPatientName() {
-        return patientName;
-    }
-    
-    public void setPatientName(String patientName) {
-        this.patientName = patientName;
-    }
-    
-    public String getMothersMaidenName() {
-        return mothersMaidenName;
-    }
-    
-    public void setMothersMaidenName(String mothersMaidenName) {
-        this.mothersMaidenName = mothersMaidenName;
-    }
-    
-    public LocalDateTime getBirthDate() {
-        return birthDate;
-    }
-    
-    public void setBirthDate(LocalDateTime birthDate) {
-        this.birthDate = birthDate;
-    }
-    
-    public String getPatientSex() {
-        return patientSex;
-    }
-    
-    public void setPatientSex(String patientSex) {
-        this.patientSex = patientSex;
-    }
-    
-    public String getPatientRaceEthnic() {
-        return patientRaceEthnic;
-    }
-    
-    public void setPatientRaceEthnic(String patientRaceEthnic) {
-        this.patientRaceEthnic = patientRaceEthnic;
-    }
-    
-    public String getPatientAddress() {
-        return patientAddress;
-    }
-    
-    public void setPatientAddress(String patientAddress) {
-        this.patientAddress = patientAddress;
-    }
-    
-    public String getReserved() {
-        return reserved;
-    }
-    
-    public void setReserved(String reserved) {
-        this.reserved = reserved;
-    }
-    
-    public String getPatientTelephoneNumber() {
-        return patientTelephoneNumber;
-    }
-    
-    public void setPatientTelephoneNumber(String patientTelephoneNumber) {
-        this.patientTelephoneNumber = patientTelephoneNumber;
-    }
-    
-    public String getAttendingPhysicianId() {
-        return attendingPhysicianId;
-    }
-    
-    public void setAttendingPhysicianId(String attendingPhysicianId) {
-        this.attendingPhysicianId = attendingPhysicianId;
-    }
-    
-    public String getPatientBirthName() {
-        return patientBirthName;
-    }
-    
-    public void setPatientBirthName(String patientBirthName) {
-        this.patientBirthName = patientBirthName;
-    }
-    
-    public String getSpecialField1() {
-        return specialField1;
-    }
-    
-    public void setSpecialField1(String specialField1) {
-        this.specialField1 = specialField1;
-    }
-    
-    public String getSpecialField2() {
-        return specialField2;
-    }
-    
-    public void setSpecialField2(String specialField2) {
-        this.specialField2 = specialField2;
-    }
-    
-    public String getPatientHeight() {
-        return patientHeight;
-    }
-    
-    public void setPatientHeight(String patientHeight) {
-        this.patientHeight = patientHeight;
-    }
-    
-    public String getPatientWeight() {
-        return patientWeight;
-    }
-    
-    public void setPatientWeight(String patientWeight) {
-        this.patientWeight = patientWeight;
-    }
-    
-    public String getPatientDiagnosis() {
-        return patientDiagnosis;
-    }
-    
-    public void setPatientDiagnosis(String patientDiagnosis) {
-        this.patientDiagnosis = patientDiagnosis;
-    }
-    
-    public String getPatientActiveMediation() {
-        return patientActiveMediation;
-    }
-    
-    public void setPatientActiveMediation(String patientActiveMediation) {
-        this.patientActiveMediation = patientActiveMediation;
-    }
-    
-    public String getPatientDiet() {
-        return patientDiet;
-    }
-    
-    public void setPatientDiet(String patientDiet) {
-        this.patientDiet = patientDiet;
-    }
-    
-    public String getPracticeField1() {
-        return practiceField1;
-    }
-    
-    public void setPracticeField1(String practiceField1) {
-        this.practiceField1 = practiceField1;
-    }
-    
-    public String getPracticeField2() {
-        return practiceField2;
-    }
-    
-    public void setPracticeField2(String practiceField2) {
-        this.practiceField2 = practiceField2;
-    }
-    
-    public LocalDateTime getAdmissionDate() {
-        return admissionDate;
-    }
-    
-    public void setAdmissionDate(LocalDateTime admissionDate) {
-        this.admissionDate = admissionDate;
-    }
-    
-    public String getAdmissionStatus() {
-        return admissionStatus;
-    }
-    
-    public void setAdmissionStatus(String admissionStatus) {
-        this.admissionStatus = admissionStatus;
-    }
-    
-    public String getLocation() {
-        return location;
-    }
-    
-    public void setLocation(String location) {
-        this.location = location;
-    }
-    
-    public String getAlternativeDiagnosticCodeAndClassification() {
-        return alternativeDiagnosticCodeAndClassification;
-    }
-    
-    public void setAlternativeDiagnosticCodeAndClassification(String alternativeDiagnosticCodeAndClassification) {
-        this.alternativeDiagnosticCodeAndClassification = alternativeDiagnosticCodeAndClassification;
-    }
-    
-    public String getPatientReligion() {
-        return patientReligion;
-    }
-    
-    public void setPatientReligion(String patientReligion) {
-        this.patientReligion = patientReligion;
-    }
-    
-    public String getMaritalStatus() {
-        return maritalStatus;
-    }
-    
-    public void setMaritalStatus(String maritalStatus) {
-        this.maritalStatus = maritalStatus;
-    }
-    
-    public String getIsolationStatus() {
-        return isolationStatus;
-    }
-    
-    public void setIsolationStatus(String isolationStatus) {
-        this.isolationStatus = isolationStatus;
-    }
-    
-    public String getLanguage() {
-        return language;
-    }
-    
-    public void setLanguage(String language) {
-        this.language = language;
-    }
-    
-    public String getHospitalService() {
-        return hospitalService;
-    }
-    
-    public void setHospitalService(String hospitalService) {
-        this.hospitalService = hospitalService;
-    }
-    
-    public String getHospitalInstitution() {
-        return hospitalInstitution;
-    }
-    
-    public void setHospitalInstitution(String hospitalInstitution) {
-        this.hospitalInstitution = hospitalInstitution;
-    }
-    
-    public String getDosageCategory() {
-        return dosageCategory;
-    }
-    
-    public void setDosageCategory(String dosageCategory) {
-        this.dosageCategory = dosageCategory;
-    }
-    
-    @Override
-    public String toString() {
-        return "PatientRecord{" +
-                "recordType='" + recordType + '\'' +
-                ", sequenceNumber=" + sequenceNumber +
-                ", practiceAssignedPatientId='" + practiceAssignedPatientId + '\'' +
-                ", patientName='" + patientName + '\'' +
-                ", birthDate=" + birthDate +
-                ", patientSex='" + patientSex + '\'' +
-                ", attendingPhysicianId='" + attendingPhysicianId + '\'' +
-                '}';
+    /**
+     * Utility method to set alternate patient ID components
+     * @param nationalId National identifier
+     * @param medicalRecordId Medical record number
+     * @param otherId Other identifier
+     */
+    public void setPatientIdAlternateComponents(String nationalId, String medicalRecordId, String otherId) {
+        this.patientIdAlternate = String.join("^",
+            nationalId != null ? nationalId : "",
+            medicalRecordId != null ? medicalRecordId : "",
+            otherId != null ? otherId : ""
+        );
+    }
+    
+    /**
+     * Utility method to get alternate patient ID components
+     * @return Array containing [nationalId, medicalRecordId, otherId]
+     */
+    public String[] getPatientIdAlternateComponents() {
+        if (patientIdAlternate == null) {
+            return new String[]{"", "", ""};
+        }
+        String[] components = patientIdAlternate.split("\\^", 3);
+        String[] result = new String[3];
+        for (int i = 0; i < 3; i++) {
+            result[i] = i < components.length ? components[i] : "";
+        }
+        return result;
     }
 }

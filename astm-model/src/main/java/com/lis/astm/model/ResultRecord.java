@@ -2,6 +2,8 @@ package com.lis.astm.model;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
@@ -26,6 +28,8 @@ import java.time.LocalDateTime;
  * - Field 14: Instrument Identification (instrument number/ID)
  * - Field 15: Test Name (human-readable test name when enabled)
  */
+@Data
+@NoArgsConstructor
 public class ResultRecord {
     
     @JsonProperty("recordType")
@@ -74,10 +78,6 @@ public class ResultRecord {
     
     @JsonProperty("testName")
     private String testName; // Human-readable test name (when enabled)
-    
-    // Constructors
-    public ResultRecord() {
-    }
     
     public ResultRecord(String universalTestId, String dataValue, String units) {
         this.universalTestId = universalTestId;
@@ -200,141 +200,5 @@ public class ResultRecord {
                resultStatus != null && !resultStatus.trim().isEmpty() &&
                dateTimeTestCompleted != null &&
                instrumentId != null && !instrumentId.trim().isEmpty();
-    }
-    
-    // Getters and Setters
-    public String getRecordType() {
-        return recordType;
-    }
-    
-    public void setRecordType(String recordType) {
-        this.recordType = recordType;
-    }
-    
-    public Integer getSequenceNumber() {
-        return sequenceNumber;
-    }
-    
-    public void setSequenceNumber(Integer sequenceNumber) {
-        this.sequenceNumber = sequenceNumber;
-    }
-    
-    public String getUniversalTestId() {
-        return universalTestId;
-    }
-    
-    public void setUniversalTestId(String universalTestId) {
-        this.universalTestId = universalTestId;
-    }
-    
-    public String getDataValue() {
-        return dataValue;
-    }
-    
-    public void setDataValue(String dataValue) {
-        this.dataValue = dataValue;
-    }
-    
-    public String getUnits() {
-        return units;
-    }
-    
-    public void setUnits(String units) {
-        this.units = units;
-    }
-    
-    public String getReferenceRanges() {
-        return referenceRanges;
-    }
-    
-    public void setReferenceRanges(String referenceRanges) {
-        this.referenceRanges = referenceRanges;
-    }
-    
-    public String getResultAbnormalFlags() {
-        return resultAbnormalFlags;
-    }
-    
-    public void setResultAbnormalFlags(String resultAbnormalFlags) {
-        this.resultAbnormalFlags = resultAbnormalFlags;
-    }
-    
-    public String getNatureFlagsTest() {
-        return natureFlagsTest;
-    }
-    
-    public void setNatureFlagsTest(String natureFlagsTest) {
-        this.natureFlagsTest = natureFlagsTest;
-    }
-    
-    public String getResultStatus() {
-        return resultStatus;
-    }
-    
-    public void setResultStatus(String resultStatus) {
-        this.resultStatus = resultStatus;
-    }
-    
-    public String getDateOfChangeInInstrumentNormativeValues() {
-        return dateOfChangeInInstrumentNormativeValues;
-    }
-    
-    public void setDateOfChangeInInstrumentNormativeValues(String dateOfChangeInInstrumentNormativeValues) {
-        this.dateOfChangeInInstrumentNormativeValues = dateOfChangeInInstrumentNormativeValues;
-    }
-    
-    public String getOperatorId() {
-        return operatorId;
-    }
-    
-    public void setOperatorId(String operatorId) {
-        this.operatorId = operatorId;
-    }
-    
-    public LocalDateTime getDateTimeTestStarted() {
-        return dateTimeTestStarted;
-    }
-    
-    public void setDateTimeTestStarted(LocalDateTime dateTimeTestStarted) {
-        this.dateTimeTestStarted = dateTimeTestStarted;
-    }
-    
-    public LocalDateTime getDateTimeTestCompleted() {
-        return dateTimeTestCompleted;
-    }
-    
-    public void setDateTimeTestCompleted(LocalDateTime dateTimeTestCompleted) {
-        this.dateTimeTestCompleted = dateTimeTestCompleted;
-    }
-    
-    public String getInstrumentId() {
-        return instrumentId;
-    }
-    
-    public void setInstrumentId(String instrumentId) {
-        this.instrumentId = instrumentId;
-    }
-    
-    public String getTestName() {
-        return testName;
-    }
-    
-    public void setTestName(String testName) {
-        this.testName = testName;
-    }
-    
-    @Override
-    public String toString() {
-        return "ResultRecord{" +
-                "recordType='" + recordType + '\'' +
-                ", sequenceNumber=" + sequenceNumber +
-                ", universalTestId='" + universalTestId + '\'' +
-                ", dataValue='" + dataValue + '\'' +
-                ", resultAbnormalFlags='" + resultAbnormalFlags + '\'' +
-                ", resultStatus='" + resultStatus + '\'' +
-                ", instrumentId='" + instrumentId + '\'' +
-                ", dateTimeTestCompleted=" + dateTimeTestCompleted +
-                ", testName='" + testName + '\'' +
-                '}';
     }
 }

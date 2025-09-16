@@ -2,6 +2,8 @@ package com.lis.astm.model;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
@@ -18,6 +20,8 @@ import java.time.LocalDateTime;
  * - Field 13: Version Number ("LIS2-A")
  * - Field 14: Date and Time (YYYYMMDDHHMMSS format)
  */
+@Data
+@NoArgsConstructor
 public class HeaderRecord {
     
     @JsonProperty("recordType")
@@ -63,13 +67,12 @@ public class HeaderRecord {
     @JsonFormat(pattern = "yyyyMMddHHmmss")
     private LocalDateTime dateTime;
     
-    // Constructors
-    public HeaderRecord() {
+    // Custom constructor to initialize dateTime
+    {
         this.dateTime = LocalDateTime.now();
     }
     
     public HeaderRecord(String messageControlId, String senderName) {
-        this();
         this.messageControlId = messageControlId;
         this.senderName = senderName;
     }
@@ -82,7 +85,6 @@ public class HeaderRecord {
      * @param instrumentId Instrument ID
      */
     public HeaderRecord(String manufacturerName, String productName, String softwareVersion, String instrumentId) {
-        this();
         this.senderName = buildSenderName(manufacturerName, productName, softwareVersion, instrumentId);
     }
     
@@ -124,130 +126,5 @@ public class HeaderRecord {
             result[i] = i < components.length ? components[i] : "";
         }
         return result;
-    }
-    
-    // Getters and Setters
-    public String getRecordType() {
-        return recordType;
-    }
-    
-    public void setRecordType(String recordType) {
-        this.recordType = recordType;
-    }
-    
-    public String getDelimiters() {
-        return delimiters;
-    }
-    
-    public void setDelimiters(String delimiters) {
-        this.delimiters = delimiters;
-    }
-    
-    public String getMessageControlId() {
-        return messageControlId;
-    }
-    
-    public void setMessageControlId(String messageControlId) {
-        this.messageControlId = messageControlId;
-    }
-    
-    public String getAccessPassword() {
-        return accessPassword;
-    }
-    
-    public void setAccessPassword(String accessPassword) {
-        this.accessPassword = accessPassword;
-    }
-    
-    public String getSenderName() {
-        return senderName;
-    }
-    
-    public void setSenderName(String senderName) {
-        this.senderName = senderName;
-    }
-    
-    public String getSenderAddress() {
-        return senderAddress;
-    }
-    
-    public void setSenderAddress(String senderAddress) {
-        this.senderAddress = senderAddress;
-    }
-    
-    public String getReservedField() {
-        return reservedField;
-    }
-    
-    public void setReservedField(String reservedField) {
-        this.reservedField = reservedField;
-    }
-    
-    public String getSenderPhone() {
-        return senderPhone;
-    }
-    
-    public void setSenderPhone(String senderPhone) {
-        this.senderPhone = senderPhone;
-    }
-    
-    public String getCharacteristics() {
-        return characteristics;
-    }
-    
-    public void setCharacteristics(String characteristics) {
-        this.characteristics = characteristics;
-    }
-    
-    public String getReceiverName() {
-        return receiverName;
-    }
-    
-    public void setReceiverName(String receiverName) {
-        this.receiverName = receiverName;
-    }
-    
-    public String getComments() {
-        return comments;
-    }
-    
-    public void setComments(String comments) {
-        this.comments = comments;
-    }
-    
-    public String getProcessingId() {
-        return processingId;
-    }
-    
-    public void setProcessingId(String processingId) {
-        this.processingId = processingId;
-    }
-    
-    public String getVersionNumber() {
-        return versionNumber;
-    }
-    
-    public void setVersionNumber(String versionNumber) {
-        this.versionNumber = versionNumber;
-    }
-    
-    public LocalDateTime getDateTime() {
-        return dateTime;
-    }
-    
-    public void setDateTime(LocalDateTime dateTime) {
-        this.dateTime = dateTime;
-    }
-    
-    @Override
-    public String toString() {
-        return "HeaderRecord{" +
-                "recordType='" + recordType + '\'' +
-                ", messageControlId='" + messageControlId + '\'' +
-                ", senderName='" + senderName + '\'' +
-                ", processingId='" + processingId + '\'' +
-                ", versionNumber='" + versionNumber + '\'' +
-                ", dateTime=" + dateTime +
-                '}';
     }
 }

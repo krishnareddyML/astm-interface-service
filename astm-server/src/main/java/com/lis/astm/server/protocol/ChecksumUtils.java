@@ -74,35 +74,78 @@ public class ChecksumUtils {
      * @param frame the complete frame including checksum
      * @return true if checksum is valid, false otherwise
      */
-    public static boolean validateFrameChecksum(String frame) {
-        if (frame == null || frame.length() < 3) {
-            return false;
-        }
+    // public static boolean validateFrameChecksum(String frame) {
+    //     if (frame == null || frame.length() < 3) {
+    //         return false;
+    //     }
 
-        try {
-            // Extract the received checksum (last 2 characters before CR/LF)
-            String frameWithoutCRLF = frame;
-            if (frame.endsWith("\r\n")) {
-                frameWithoutCRLF = frame.substring(0, frame.length() - 2);
-            } else if (frame.endsWith("\r") || frame.endsWith("\n")) {
-                frameWithoutCRLF = frame.substring(0, frame.length() - 1);
-            }
+    //     try {
+    //         // Extract the received checksum (last 2 characters before CR/LF)
+    //         String frameWithoutCRLF = frame;
+    //         if (frame.endsWith("\r\n")) {
+    //             frameWithoutCRLF = frame.substring(0, frame.length() - 2);
+    //         } else if (frame.endsWith("\r") || frame.endsWith("\n")) {
+    //             frameWithoutCRLF = frame.substring(0, frame.length() - 1);
+    //         }
 
-            if (frameWithoutCRLF.length() < 3) {
-                return false;
-            }
+    //         if (frameWithoutCRLF.length() < 3) {
+    //             return false;
+    //         }
 
-            String receivedChecksum = frameWithoutCRLF.substring(frameWithoutCRLF.length() - 2);
-            String frameData = frameWithoutCRLF.substring(0, frameWithoutCRLF.length() - 2);
+    //         String receivedChecksum = frameWithoutCRLF.substring(frameWithoutCRLF.length() - 2);
+    //         String frameData = frameWithoutCRLF.substring(0, frameWithoutCRLF.length() - 2);
 
-            // Calculate expected checksum
-            String expectedChecksum = calculateFrameChecksum(frameData);
+    //         // Calculate expected checksum
+    //         String expectedChecksum = calculateFrameChecksum(frameData);
 
-            return receivedChecksum.equalsIgnoreCase(expectedChecksum);
-        } catch (Exception e) {
-            return false;
-        }
+    //         return receivedChecksum.equalsIgnoreCase(expectedChecksum);
+    //     } catch (Exception e) {
+    //         return false;
+    //     }
+    // }
+
+   public static boolean validateFrameChecksum(String frame) {
+    if (frame == null || frame.isEmpty()) {
+        return false;
     }
+
+    // 1. Manually remove trailing CR and LF without using trim()
+    String frameWithoutCRLF = frame;
+    if (frameWithoutCRLF.endsWith("\r\n")) {
+        frameWithoutCRLF = frameWithoutCRLF.substring(0, frameWithoutCRLF.length() - 2);
+    } else if (frameWithoutCRLF.endsWith("\n") || frameWithoutCRLF.endsWith("\r")) {
+        frameWithoutCRLF = frameWithoutCRLF.substring(0, frameWithoutCRLF.length() - 1);
+    }
+
+    // A valid frame must now be at least 4 characters: STX, Frame #, End Marker, Checksum Digit 1, Checksum Digit 2
+    if (frameWithoutCRLF.length() < 5) {
+        return false;
+    }
+    
+    // The frame MUST start with STX
+    if (frameWithoutCRLF.charAt(0) != STX) {
+        return false;
+    }
+
+    try {
+        // 2. Extract the received checksum (the last two characters)
+        String receivedChecksum = frameWithoutCRLF.substring(frameWithoutCRLF.length() - 2);
+
+        // 3. Extract the data used for the calculation. This is the part
+        //    from the frame number (index 1) up to and including the end marker.
+        String dataForChecksum = frameWithoutCRLF.substring(1, frameWithoutCRLF.length() - 2);
+
+        // 4. Calculate what the checksum SHOULD be
+        String expectedChecksum = calculate(dataForChecksum);
+
+        // 5. Compare them
+        return receivedChecksum.equalsIgnoreCase(expectedChecksum);
+
+    } catch (Exception e) {
+        // Any string index error means the frame was malformed
+        return false;
+    }
+}
 
     /**
      * Build a complete ASTM frame with checksum

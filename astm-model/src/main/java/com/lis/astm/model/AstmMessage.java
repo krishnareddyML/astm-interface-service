@@ -1,6 +1,10 @@
 package com.lis.astm.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -8,7 +12,17 @@ import java.util.List;
 /**
  * Container class representing a complete ASTM message
  * Contains header, patient, orders, results, and terminator records
+ * 
+ * Enhanced with Lombok for cleaner code and automatic generation of:
+ * - Getters and setters
+ * - toString, equals, and hashCode methods
+ * - Builder pattern support
+ * - Constructors
  */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class AstmMessage {
     
     @JsonProperty("headerRecord")
@@ -18,16 +32,20 @@ public class AstmMessage {
     private PatientRecord patientRecord;
     
     @JsonProperty("orderRecords")
-    private List<OrderRecord> orderRecords;
+    @Builder.Default
+    private List<OrderRecord> orderRecords = new ArrayList<>();
     
     @JsonProperty("resultRecords")
-    private List<ResultRecord> resultRecords;
+    @Builder.Default
+    private List<ResultRecord> resultRecords = new ArrayList<>();
     
     @JsonProperty("queryRecords")
-    private List<QueryRecord> queryRecords;
+    @Builder.Default
+    private List<QueryRecord> queryRecords = new ArrayList<>();
     
     @JsonProperty("mResultRecords")
-    private List<MResultRecord> mResultRecords;
+    @Builder.Default
+    private List<MResultRecord> mResultRecords = new ArrayList<>();
     
     @JsonProperty("terminatorRecord")
     private TerminatorRecord terminatorRecord;
@@ -41,101 +59,7 @@ public class AstmMessage {
     @JsonProperty("rawMessage")
     private String rawMessage; // Original ASTM message string for debugging
     
-    // Constructors
-    public AstmMessage() {
-        this.orderRecords = new ArrayList<>();
-        this.resultRecords = new ArrayList<>();
-        this.queryRecords = new ArrayList<>();
-        this.mResultRecords = new ArrayList<>();
-    }
-    
-    public AstmMessage(String messageType) {
-        this();
-        this.messageType = messageType;
-    }
-    
-    // Getters and Setters
-    public HeaderRecord getHeaderRecord() {
-        return headerRecord;
-    }
-    
-    public void setHeaderRecord(HeaderRecord headerRecord) {
-        this.headerRecord = headerRecord;
-    }
-    
-    public PatientRecord getPatientRecord() {
-        return patientRecord;
-    }
-    
-    public void setPatientRecord(PatientRecord patientRecord) {
-        this.patientRecord = patientRecord;
-    }
-    
-    public List<OrderRecord> getOrderRecords() {
-        return orderRecords;
-    }
-    
-    public void setOrderRecords(List<OrderRecord> orderRecords) {
-        this.orderRecords = orderRecords != null ? orderRecords : new ArrayList<>();
-    }
-    
-    public List<ResultRecord> getResultRecords() {
-        return resultRecords;
-    }
-    
-    public void setResultRecords(List<ResultRecord> resultRecords) {
-        this.resultRecords = resultRecords != null ? resultRecords : new ArrayList<>();
-    }
-    
-    public List<QueryRecord> getQueryRecords() {
-        return queryRecords;
-    }
-    
-    public void setQueryRecords(List<QueryRecord> queryRecords) {
-        this.queryRecords = queryRecords != null ? queryRecords : new ArrayList<>();
-    }
-    
-    public List<MResultRecord> getMResultRecords() {
-        return mResultRecords;
-    }
-    
-    public void setMResultRecords(List<MResultRecord> mResultRecords) {
-        this.mResultRecords = mResultRecords != null ? mResultRecords : new ArrayList<>();
-    }
-    
-    public TerminatorRecord getTerminatorRecord() {
-        return terminatorRecord;
-    }
-    
-    public void setTerminatorRecord(TerminatorRecord terminatorRecord) {
-        this.terminatorRecord = terminatorRecord;
-    }
-    
-    public String getMessageType() {
-        return messageType;
-    }
-    
-    public void setMessageType(String messageType) {
-        this.messageType = messageType;
-    }
-    
-    public String getInstrumentName() {
-        return instrumentName;
-    }
-    
-    public void setInstrumentName(String instrumentName) {
-        this.instrumentName = instrumentName;
-    }
-    
-    public String getRawMessage() {
-        return rawMessage;
-    }
-    
-    public void setRawMessage(String rawMessage) {
-        this.rawMessage = rawMessage;
-    }
-    
-    // Utility methods
+    // Custom business logic methods (utility methods)
     public void addOrderRecord(OrderRecord orderRecord) {
         if (this.orderRecords == null) {
             this.orderRecords = new ArrayList<>();
@@ -194,20 +118,5 @@ public class AstmMessage {
     
     public int getMResultCount() {
         return mResultRecords != null ? mResultRecords.size() : 0;
-    }
-    
-    @Override
-    public String toString() {
-        return "AstmMessage{" +
-                "messageType='" + messageType + '\'' +
-                ", instrumentName='" + instrumentName + '\'' +
-                ", orderCount=" + getOrderCount() +
-                ", resultCount=" + getResultCount() +
-                ", queryCount=" + getQueryCount() +
-                ", mResultCount=" + getMResultCount() +
-                ", hasPatient=" + (patientRecord != null) +
-                ", hasHeader=" + (headerRecord != null) +
-                ", hasTerminator=" + (terminatorRecord != null) +
-                '}';
     }
 }

@@ -1,6 +1,8 @@
 package com.lis.astm.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * Represents an ASTM Query/Request Record (Q)
@@ -23,6 +25,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * - Field 12: User Field 2 (Unused)
  * - Field 13: Request Information Status Codes (O = Request test orders and demographics only)
  */
+@Data
+@NoArgsConstructor
 public class QueryRecord {
     
     @JsonProperty("recordType")
@@ -62,105 +66,37 @@ public class QueryRecord {
     private String userField2; // Unused per specification
     
     @JsonProperty("requestInformationStatusCodes")
-    private String requestInformationStatusCodes; // O = Request test orders and demographics only
-    
-    // Constructors
-    public QueryRecord() {
-        this.requestInformationStatusCodes = "O"; // Default to request orders and demographics
-    }
-    
-    public QueryRecord(String computerSystemSpecimenId) {
-        this();
-        this.startingRangeId = buildStartingRangeId("", computerSystemSpecimenId);
-        this.sequenceNumber = 1; // Default sequence number
-    }
+    private String requestInformationStatusCodes = "O"; // O = Request test orders and demographics only
     
     /**
      * Constructor for ASTM-compliant Query Record
-     * @param sequenceNumber Required sequence number starting at 1
-     * @param computerSystemSpecimenId Required computer system sample ID (component 3.2)
-     * @param requestInformationStatusCodes Required status code (typically "O")
+     * @param sequenceNumber Required sequence number
+     * @param specimenId Required specimen ID (Computer System Sample ID)
+     * @param requestInformationStatusCodes Required status codes (O for orders and demographics)
      */
-    public QueryRecord(Integer sequenceNumber, String computerSystemSpecimenId, String requestInformationStatusCodes) {
+    public QueryRecord(Integer sequenceNumber, String specimenId, String requestInformationStatusCodes) {
         this.sequenceNumber = sequenceNumber;
-        this.startingRangeId = buildStartingRangeId("", computerSystemSpecimenId);
+        this.startingRangeId = "^" + (specimenId != null ? specimenId : ""); // ^Computer System Specimen ID
         this.requestInformationStatusCodes = requestInformationStatusCodes;
     }
     
     /**
-     * Builds the composite starting range ID field (Field 3)
-     * Format: Computer System Patient ID^Computer System Specimen ID
-     * Component 3.1: Computer System Patient ID (unused per specification)
-     * Component 3.2: Computer System Specimen ID (required)
+     * Utility method to set the specimen ID (Computer System Sample ID)
+     * @param specimenId Required specimen ID
      */
-    private String buildStartingRangeId(String patientId, String specimenId) {
-        return String.join("^", 
-            patientId != null ? patientId : "",
-            specimenId != null ? specimenId : ""
-        );
+    public void setSpecimenId(String specimenId) {
+        this.startingRangeId = "^" + (specimenId != null ? specimenId : "");
     }
     
     /**
-     * Utility method to set starting range ID components (Field 3)
-     * @param patientId Computer system patient ID (component 3.1 - unused per specification)
-     * @param specimenId Computer system specimen ID (component 3.2 - required)
+     * Utility method to get the specimen ID from the composite field
+     * @return The specimen ID or empty string if not set
      */
-    public void setStartingRangeIdComponents(String patientId, String specimenId) {
-        this.startingRangeId = buildStartingRangeId(patientId, specimenId);
-    }
-    
-    /**
-     * Utility method to get starting range ID components (Field 3)
-     * @return Array containing [patientId (3.1), specimenId (3.2)]
-     */
-    public String[] getStartingRangeIdComponents() {
-        if (startingRangeId == null) {
-            return new String[]{"", ""};
+    public String getSpecimenId() {
+        if (startingRangeId == null || !startingRangeId.startsWith("^")) {
+            return "";
         }
-        String[] components = startingRangeId.split("\\^", 2);
-        String[] result = new String[2];
-        for (int i = 0; i < 2; i++) {
-            result[i] = i < components.length ? components[i] : "";
-        }
-        return result;
-    }
-    
-    /**
-     * Gets the computer system specimen ID (component 3.2)
-     * @return Computer system specimen ID
-     */
-    public String getComputerSystemSpecimenId() {
-        String[] components = getStartingRangeIdComponents();
-        return components[1]; // Component 3.2
-    }
-    
-    /**
-     * Sets the computer system specimen ID (component 3.2)
-     * @param specimenId Computer system specimen ID
-     */
-    public void setComputerSystemSpecimenId(String specimenId) {
-        String[] components = getStartingRangeIdComponents();
-        this.startingRangeId = buildStartingRangeId(components[0], specimenId);
-    }
-    
-    /**
-     * Gets the computer system patient ID (component 3.1)
-     * Note: This component is unused per specification
-     * @return Computer system patient ID
-     */
-    public String getComputerSystemPatientId() {
-        String[] components = getStartingRangeIdComponents();
-        return components[0]; // Component 3.1
-    }
-    
-    /**
-     * Sets the computer system patient ID (component 3.1)
-     * Note: This component is unused per specification
-     * @param patientId Computer system patient ID
-     */
-    public void setComputerSystemPatientId(String patientId) {
-        String[] components = getStartingRangeIdComponents();
-        this.startingRangeId = buildStartingRangeId(patientId, components[1]);
+        return startingRangeId.substring(1);
     }
     
     /**
@@ -168,132 +104,8 @@ public class QueryRecord {
      * @return true if all required fields are present
      */
     public boolean isASTMCompliant() {
-        String specimenId = getComputerSystemSpecimenId();
         return sequenceNumber != null && 
-               specimenId != null && !specimenId.trim().isEmpty() &&
+               startingRangeId != null && startingRangeId.contains("^") &&
                requestInformationStatusCodes != null && !requestInformationStatusCodes.trim().isEmpty();
-    }
-    
-    /**
-     * Checks if this is a request for test orders and demographics
-     * @return true if status code is "O"
-     */
-    public boolean isRequestForOrdersAndDemographics() {
-        return "O".equals(requestInformationStatusCodes);
-    }
-    
-    // Getters and Setters
-    public String getRecordType() {
-        return recordType;
-    }
-    
-    public void setRecordType(String recordType) {
-        this.recordType = recordType;
-    }
-    
-    public Integer getSequenceNumber() {
-        return sequenceNumber;
-    }
-    
-    public void setSequenceNumber(Integer sequenceNumber) {
-        this.sequenceNumber = sequenceNumber;
-    }
-    
-    public String getStartingRangeId() {
-        return startingRangeId;
-    }
-    
-    public void setStartingRangeId(String startingRangeId) {
-        this.startingRangeId = startingRangeId;
-    }
-    
-    public String getEndingRangeId() {
-        return endingRangeId;
-    }
-    
-    public void setEndingRangeId(String endingRangeId) {
-        this.endingRangeId = endingRangeId;
-    }
-    
-    public String getUniversalTestId() {
-        return universalTestId;
-    }
-    
-    public void setUniversalTestId(String universalTestId) {
-        this.universalTestId = universalTestId;
-    }
-    
-    public String getNatureOfRequestTimeLimits() {
-        return natureOfRequestTimeLimits;
-    }
-    
-    public void setNatureOfRequestTimeLimits(String natureOfRequestTimeLimits) {
-        this.natureOfRequestTimeLimits = natureOfRequestTimeLimits;
-    }
-    
-    public String getBeginningRequestResultsDateTime() {
-        return beginningRequestResultsDateTime;
-    }
-    
-    public void setBeginningRequestResultsDateTime(String beginningRequestResultsDateTime) {
-        this.beginningRequestResultsDateTime = beginningRequestResultsDateTime;
-    }
-    
-    public String getEndingRequestResultsDateTime() {
-        return endingRequestResultsDateTime;
-    }
-    
-    public void setEndingRequestResultsDateTime(String endingRequestResultsDateTime) {
-        this.endingRequestResultsDateTime = endingRequestResultsDateTime;
-    }
-    
-    public String getRequestingPhysicianName() {
-        return requestingPhysicianName;
-    }
-    
-    public void setRequestingPhysicianName(String requestingPhysicianName) {
-        this.requestingPhysicianName = requestingPhysicianName;
-    }
-    
-    public String getRequestingPhysicianPhoneNumber() {
-        return requestingPhysicianPhoneNumber;
-    }
-    
-    public void setRequestingPhysicianPhoneNumber(String requestingPhysicianPhoneNumber) {
-        this.requestingPhysicianPhoneNumber = requestingPhysicianPhoneNumber;
-    }
-    
-    public String getUserField1() {
-        return userField1;
-    }
-    
-    public void setUserField1(String userField1) {
-        this.userField1 = userField1;
-    }
-    
-    public String getUserField2() {
-        return userField2;
-    }
-    
-    public void setUserField2(String userField2) {
-        this.userField2 = userField2;
-    }
-    
-    public String getRequestInformationStatusCodes() {
-        return requestInformationStatusCodes;
-    }
-    
-    public void setRequestInformationStatusCodes(String requestInformationStatusCodes) {
-        this.requestInformationStatusCodes = requestInformationStatusCodes;
-    }
-    
-    @Override
-    public String toString() {
-        return "QueryRecord{" +
-                "recordType='" + recordType + '\'' +
-                ", sequenceNumber=" + sequenceNumber +
-                ", computerSystemSpecimenId='" + getComputerSystemSpecimenId() + '\'' +
-                ", requestInformationStatusCodes='" + requestInformationStatusCodes + '\'' +
-                '}';
     }
 }

@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Main ASTM Server component that manages TCP listeners for multiple instruments.
@@ -33,7 +32,8 @@ public class ASTMServer {
 
     // Network defaults (can be moved to AppConfig later)
     private static final int ACCEPT_TIMEOUT_MS = 1_000;     // accept() wake interval
-    private static final int READ_TIMEOUT_MS   = 30_000;    // per-connection read() timeout
+    //private static final int READ_TIMEOUT_MS   = 30_000;    // per-connection read() timeout
+    private static final int READ_TIMEOUT_MS   = 360_000; // increasing 6 min, that said greater that Keep Live ping interval 5 min
     private static final int BIND_BACKLOG      = 128;       // pending connection queue
     private static final int SCHEDULER_THREADS = 4;         // keep-alive / timers
     private static final int AWAIT_SEC         = 30;        // shutdown wait
