@@ -2,8 +2,7 @@ package com.lis.astm.server.driver.impl;
 
 import com.lis.astm.model.*;
 import com.lis.astm.server.driver.InstrumentDriver;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -14,9 +13,8 @@ import java.time.format.DateTimeParseException;
  * Concrete implementation of InstrumentDriver for Ortho Vision instruments
  * Handles Ortho Vision specific ASTM message format and protocol variations
  */
+@Slf4j
 public class OrthoVisionDriver implements InstrumentDriver {
-
-    private static final Logger logger = LoggerFactory.getLogger(OrthoVisionDriver.class);
 
     private static final String INSTRUMENT_NAME = "Ortho Vision";
     private static final String ASTM_VERSION = "1394-97";
@@ -34,7 +32,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
             throw new IllegalArgumentException("Raw message cannot be null or empty");
         }
 
-        logger.debug("Parsing ASTM message for Ortho Vision: {} characters", rawMessage.length());
+        log.debug("Parsing ASTM message for Ortho Vision: {} characters", rawMessage.length());
 
         AstmMessage astmMessage = new AstmMessage();
         astmMessage.setRawMessage(rawMessage);
@@ -52,7 +50,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
             try {
                 parseRecord(line, astmMessage);
             } catch (Exception e) {
-                logger.warn("Error parsing line '{}': {}", line, e.getMessage());
+                log.warn("Error parsing line '{}': {}", line, e.getMessage());
                 // Continue processing other lines
             }
         }
@@ -60,7 +58,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
         // Determine message type based on content
         determineMessageType(astmMessage);
 
-        logger.info("Successfully parsed Ortho Vision message: {} orders, {} results", 
+        log.info("Successfully parsed Ortho Vision message: {} orders, {} results", 
                    astmMessage.getOrderCount(), astmMessage.getResultCount());
 
         return astmMessage;
@@ -72,7 +70,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
             throw new IllegalArgumentException("AstmMessage cannot be null");
         }
 
-        logger.debug("Building ASTM message for Ortho Vision");
+        log.debug("Building ASTM message for Ortho Vision");
 
         StringBuilder messageBuilder = new StringBuilder();
 
@@ -120,7 +118,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
         }
 
         String result = messageBuilder.toString();
-        logger.info("Successfully built Ortho Vision ASTM message: {} characters", result.length());
+        log.info("Successfully built Ortho Vision ASTM message: {} characters", result.length());
 
         return result;
     }
@@ -187,7 +185,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
                 astmMessage.setTerminatorRecord(parseTerminatorRecord(fields));
                 break;
             default:
-                logger.debug("Unknown record type: {}", recordType);
+                log.debug("Unknown record type: {}", recordType);
         }
     }
 
@@ -212,7 +210,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
                     header.setDateTime(LocalDateTime.parse(dateTimeStr, DATETIME_FORMATTER));
                 }
             } catch (DateTimeParseException e) {
-                logger.warn("Invalid date/time format in header: {}", getFieldValue(fields, 12));
+                log.warn("Invalid date/time format in header: {}", getFieldValue(fields, 12));
             }
         }
 
@@ -226,7 +224,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
             try {
                 patient.setSequenceNumber(Integer.parseInt(getFieldValue(fields, 1)));
             } catch (NumberFormatException e) {
-                logger.warn("Invalid sequence number in patient record: {}", getFieldValue(fields, 1));
+                log.warn("Invalid sequence number in patient record: {}", getFieldValue(fields, 1));
             }
         }
         if (fields.length > 2) patient.setPracticeAssignedPatientId(getFieldValue(fields, 2));
@@ -256,7 +254,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
                     patient.setBirthDate(birthDateTime);
                 }
             } catch (DateTimeParseException e) {
-                logger.warn("Invalid birth date format in patient record: {}", getFieldValue(fields, 7));
+                log.warn("Invalid birth date format in patient record: {}", getFieldValue(fields, 7));
             }
         }
         if (fields.length > 8) patient.setPatientSex(getFieldValue(fields, 8));
@@ -276,7 +274,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
             try {
                 order.setSequenceNumber(Integer.parseInt(getFieldValue(fields, 1)));
             } catch (NumberFormatException e) {
-                logger.warn("Invalid sequence number in order record: {}", getFieldValue(fields, 1));
+                log.warn("Invalid sequence number in order record: {}", getFieldValue(fields, 1));
             }
         }
         if (fields.length > 2) order.setSpecimenId(getFieldValue(fields, 2));
@@ -290,7 +288,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
                     order.setRequestedDateTime(LocalDateTime.parse(requestedDateTimeStr, DATETIME_FORMATTER));
                 }
             } catch (DateTimeParseException e) {
-                logger.warn("Invalid requested date/time format in order record: {}", getFieldValue(fields, 6));
+                log.warn("Invalid requested date/time format in order record: {}", getFieldValue(fields, 6));
             }
         }
         if (fields.length > 7) {
@@ -300,7 +298,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
                     order.setSpecimenCollectionDateTime(LocalDateTime.parse(collectionDateTimeStr, DATETIME_FORMATTER));
                 }
             } catch (DateTimeParseException e) {
-                logger.warn("Invalid collection date/time format in order record: {}", getFieldValue(fields, 7));
+                log.warn("Invalid collection date/time format in order record: {}", getFieldValue(fields, 7));
             }
         }
         if (fields.length > 8) order.setCollectorId(getFieldValue(fields, 8));
@@ -318,7 +316,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
             try {
                 result.setSequenceNumber(Integer.parseInt(getFieldValue(fields, 1)));
             } catch (NumberFormatException e) {
-                logger.warn("Invalid sequence number in result record: {}", getFieldValue(fields, 1));
+                log.warn("Invalid sequence number in result record: {}", getFieldValue(fields, 1));
             }
         }
         if (fields.length > 2) result.setUniversalTestId(getFieldValue(fields, 2));
@@ -335,7 +333,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
                     result.setDateTimeTestCompleted(LocalDateTime.parse(completedDateTimeStr, DATETIME_FORMATTER));
                 }
             } catch (DateTimeParseException e) {
-                logger.warn("Invalid test completed date/time format in result record: {}", getFieldValue(fields, 9));
+                log.warn("Invalid test completed date/time format in result record: {}", getFieldValue(fields, 9));
             }
         }
         if (fields.length > 10) result.setInstrumentId(getFieldValue(fields, 10));
@@ -351,7 +349,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
             try {
                 terminator.setSequenceNumber(Integer.parseInt(getFieldValue(fields, 1)));
             } catch (NumberFormatException e) {
-                logger.warn("Invalid sequence number in terminator record: {}", getFieldValue(fields, 1));
+                log.warn("Invalid sequence number in terminator record: {}", getFieldValue(fields, 1));
             }
         }
         if (fields.length > 2) terminator.setTerminationCode(getFieldValue(fields, 2));

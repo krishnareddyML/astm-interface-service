@@ -20,6 +20,9 @@ lis:
     defaultOrderQueuePrefix: lis.orders.outbound.
     resultQueueName: lis.results.inbound
     exchangeName: lis.exchange
+    
+# Custom properties for application
+log_path: D:/astm-interface-services-data/logs
 
 # Local RabbitMQ Configuration (for when messaging is enabled)
 spring:
@@ -28,15 +31,6 @@ spring:
     port: 5672
     username: guest
     password: guest
-
-# Local Logging Configuration
-logging:
-  level:
-    "[com.lis.astm]": DEBUG  # More verbose logging for development
-    "[org.springframework.amqp]": WARN
-    "[org.springframework.boot]": WARN
-  file:
-    name: D:/astm-interface-services-data/logs/astm-interface-service-local.log
 
 # Local Server Configuration
 server:

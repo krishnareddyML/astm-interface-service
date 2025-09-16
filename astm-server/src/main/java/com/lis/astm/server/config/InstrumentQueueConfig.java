@@ -1,8 +1,7 @@
 package com.lis.astm.server.config;
 
 import com.lis.astm.server.messaging.OrderQueueListener;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.amqp.rabbit.listener.adapter.MessageListenerAdapter;
@@ -20,9 +19,8 @@ import java.util.Map;
  */
 @Configuration
 @ConditionalOnProperty(name = "lis.messaging.enabled", havingValue = "true")
+@Slf4j
 public class InstrumentQueueConfig {
-
-    private static final Logger logger = LoggerFactory.getLogger(InstrumentQueueConfig.class);
 
     @Autowired
     private AppConfig appConfig;
@@ -38,7 +36,7 @@ public class InstrumentQueueConfig {
      */
     @PostConstruct
     public void setupInstrumentQueues() {
-        logger.info("Setting up predefined instrument queues...");
+        log.info("Setting up predefined instrument queues...");
 
         for (AppConfig.InstrumentConfig instrumentConfig : appConfig.getInstruments()) {
             if (instrumentConfig.isEnabled()) {
@@ -46,7 +44,7 @@ public class InstrumentQueueConfig {
                 String orderQueueName = instrumentConfig.getEffectiveOrderQueueName(appConfig.getMessaging());
                 setupQueueListener(orderQueueName, instrumentConfig.getName(), "orders");
                 
-                logger.info("Configured queues for instrument '{}': orders={}, results={}", 
+                log.info("Configured queues for instrument '{}': orders={}, results={}", 
                            instrumentConfig.getName(), 
                            orderQueueName,
                            instrumentConfig.getEffectiveResultQueueName(appConfig.getMessaging()));
@@ -77,11 +75,11 @@ public class InstrumentQueueConfig {
             // Start the container
             container.start();
 
-            logger.info("Started {} queue listener for instrument '{}' on queue '{}'", 
+            log.info("Started {} queue listener for instrument '{}' on queue '{}'", 
                        queueType, instrumentName, queueName);
 
         } catch (Exception e) {
-            logger.error("Failed to setup {} queue listener for instrument '{}' on queue '{}': {}", 
+            log.error("Failed to setup {} queue listener for instrument '{}' on queue '{}': {}", 
                         queueType, instrumentName, queueName, e.getMessage(), e);
         }
     }

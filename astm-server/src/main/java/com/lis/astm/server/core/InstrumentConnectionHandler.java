@@ -5,8 +5,7 @@ import com.lis.astm.server.driver.InstrumentDriver;
 import com.lis.astm.server.messaging.ResultQueuePublisher;
 import com.lis.astm.server.protocol.ASTMProtocolStateMachine;
 import com.lis.astm.server.service.AstmKeepAliveService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.net.Socket;
@@ -28,9 +27,8 @@ import java.util.concurrent.ScheduledExecutorService;
  * 
  * @author Production Refactoring - September 2025
  */
+@Slf4j
 public class InstrumentConnectionHandler implements Runnable {
-
-    private static final Logger logger = LoggerFactory.getLogger(InstrumentConnectionHandler.class);
 
     private final Socket socket;
     private final InstrumentDriver driver;
@@ -59,13 +57,13 @@ public class InstrumentConnectionHandler implements Runnable {
             this.keepAliveService = null;
         }
         
-        logger.info("Created connection handler for instrument: {} from {} (keep-alive: {} minutes)", 
+        log.info("Created connection handler for instrument: {} from {} (keep-alive: {} minutes)", 
                    instrumentName, socket.getRemoteSocketAddress(), keepAliveIntervalMinutes);
     }
 
     @Override
     public void run() {
-        logger.info("Starting connection handler for instrument: {} from {}", 
+        log.info("Starting connection handler for instrument: {} from {}", 
                    instrumentName, getRemoteAddress());
         
         try {
@@ -74,7 +72,7 @@ public class InstrumentConnectionHandler implements Runnable {
             // Start keep-alive service if configured
             if (keepAliveService != null) {
                 keepAliveService.start();
-                logger.info("Keep-alive service started for instrument: {} ({} minute intervals)", 
+                log.info("Keep-alive service started for instrument: {} ({} minute intervals)", 
                            instrumentName, keepAliveService.getStats().intervalMinutes);
             }
             
@@ -84,7 +82,7 @@ public class InstrumentConnectionHandler implements Runnable {
                     // CRITICAL FIX: handleIncomingMessages() now returns boolean
                     // If it returns false, we break the loop immediately for graceful termination
                     if (!handleIncomingMessages()) {
-                        logger.info("handleIncomingMessages returned false - terminating connection handler for {}", 
+                        log.info("handleIncomingMessages returned false - terminating connection handler for {}", 
                                    instrumentName);
                         break;
                     }
@@ -95,23 +93,23 @@ public class InstrumentConnectionHandler implements Runnable {
                 } catch (SocketTimeoutException e) {
                     // Normal timeout during read operations - continue listening
                     // The socket timeout (6 minutes) combined with keep-alive prevents stale connections
-                    logger.debug("Socket timeout in main loop for {} - this is normal behavior", instrumentName);
+                    log.debug("Socket timeout in main loop for {} - this is normal behavior", instrumentName);
                     continue;
                     
                 } catch (InterruptedException e) {
-                    logger.info("Connection handler interrupted for instrument: {}", instrumentName);
+                    log.info("Connection handler interrupted for instrument: {}", instrumentName);
                     Thread.currentThread().interrupt();
                     break;
                     
                 } catch (IOException e) {
                     if (running) {
-                        logger.error("IO error in connection handler for instrument {}: {}", 
+                        log.error("IO error in connection handler for instrument {}: {}", 
                                    instrumentName, e.getMessage());
                     }
                     break;
                     
                 } catch (Exception e) {
-                    logger.error("Unexpected error in connection handler for instrument {}: {}", 
+                    log.error("Unexpected error in connection handler for instrument {}: {}", 
                                instrumentName, e.getMessage(), e);
                     // Continue running despite the error to maintain connection resilience
                     // However, if errors are frequent, the connection will eventually timeout
@@ -119,7 +117,7 @@ public class InstrumentConnectionHandler implements Runnable {
             }
             
         } catch (Exception e) {
-            logger.error("Fatal error in connection handler for instrument {}: {}", 
+            log.error("Fatal error in connection handler for instrument {}: {}", 
                        instrumentName, e.getMessage(), e);
         } finally {
             cleanup();
@@ -143,18 +141,18 @@ public class InstrumentConnectionHandler implements Runnable {
         // 2. Stale connection timeout (6 minutes with no keep-alive)
         // In both cases, we should terminate the handler gracefully
         if (rawMessage == null) {
-            logger.warn("No message received from {} (client disconnected or connection timed out). " +
+            log.warn("No message received from {} (client disconnected or connection timed out). " +
                        "Terminating connection handler gracefully.", getRemoteAddress());
             return false; // Signal main loop to terminate
         }
 
         // Process valid messages
         if (!rawMessage.trim().isEmpty()) {
-            logger.info("Received ASTM message from {}: {} characters", instrumentName, rawMessage.length());
+            log.info("Received ASTM message from {}: {} characters", instrumentName, rawMessage.length());
             
             // Check if this is a keep-alive message first
             if (keepAliveService != null && keepAliveService.handleIncomingKeepAlive(rawMessage)) {
-                logger.debug("Handled incoming keep-alive message from instrument: {}", instrumentName);
+                log.debug("Handled incoming keep-alive message from instrument: {}", instrumentName);
                 return true; // Keep-alive processed, continue main loop
             }
             
@@ -169,23 +167,23 @@ public class InstrumentConnectionHandler implements Runnable {
                     // Publish results to message queue
                     if (parsedMessage.hasResults()) {
                         resultPublisher.publishResult(parsedMessage);
-                        logger.info("Published {} results from {} to message queue", 
+                        log.info("Published {} results from {} to message queue", 
                                    parsedMessage.getResultCount(), instrumentName);
                     }
                     
                     // Handle orders if present (for bidirectional communication)
                     if (parsedMessage.hasOrders()) {
-                        logger.info("Received {} orders from {}", 
+                        log.info("Received {} orders from {}", 
                                    parsedMessage.getOrderCount(), instrumentName);
                         // Orders would typically be handled by a separate queue listener
                     }
                     
                 } else {
-                    logger.warn("Failed to parse ASTM message from {}", instrumentName);
+                    log.warn("Failed to parse ASTM message from {}", instrumentName);
                 }
                 
             } catch (Exception e) {
-                logger.error("Error processing ASTM message from {}: {}", instrumentName, e.getMessage(), e);
+                log.error("Error processing ASTM message from {}: {}", instrumentName, e.getMessage(), e);
                 // Don't re-throw - continue processing other messages
             }
         }
@@ -199,7 +197,7 @@ public class InstrumentConnectionHandler implements Runnable {
      */
     public boolean sendMessage(AstmMessage message) {
         if (!connected || !running) {
-            logger.warn("Cannot send message to {}: connection not active", instrumentName);
+            log.warn("Cannot send message to {}: connection not active", instrumentName);
             return false;
         }
 
@@ -212,20 +210,20 @@ public class InstrumentConnectionHandler implements Runnable {
                 boolean success = protocolStateMachine.sendMessage(rawMessage);
                 
                 if (success) {
-                    logger.info("Successfully sent ASTM message to {}: {} characters", 
+                    log.info("Successfully sent ASTM message to {}: {} characters", 
                                instrumentName, rawMessage.length());
                 } else {
-                    logger.error("Failed to send ASTM message to {}", instrumentName);
+                    log.error("Failed to send ASTM message to {}", instrumentName);
                 }
                 
                 return success;
             } else {
-                logger.error("Failed to build ASTM message for {}", instrumentName);
+                log.error("Failed to build ASTM message for {}", instrumentName);
                 return false;
             }
             
         } catch (Exception e) {
-            logger.error("Error sending ASTM message to {}: {}", instrumentName, e.getMessage(), e);
+            log.error("Error sending ASTM message to {}: {}", instrumentName, e.getMessage(), e);
             return false;
         }
     }
@@ -242,6 +240,27 @@ public class InstrumentConnectionHandler implements Runnable {
      */
     public String getInstrumentName() {
         return instrumentName;
+    }
+
+    /**
+     * Get the protocol state machine for collision detection
+     */
+    public ASTMProtocolStateMachine getProtocolStateMachine() {
+        return protocolStateMachine;
+    }
+
+    /**
+     * Check if the instrument is currently busy (not in IDLE state)
+     */
+    public boolean isBusy() {
+        return protocolStateMachine.getCurrentState() != ASTMProtocolStateMachine.State.IDLE;
+    }
+
+    /**
+     * Check if the instrument can accept outbound orders
+     */
+    public boolean canAcceptOrders() {
+        return isConnected() && !isBusy();
     }
 
     /**
@@ -271,7 +290,7 @@ public class InstrumentConnectionHandler implements Runnable {
      * Gracefully stop the connection handler
      */
     public void stop() {
-        logger.info("Stopping connection handler for instrument: {}", instrumentName);
+        log.info("Stopping connection handler for instrument: {}", instrumentName);
         running = false;
         
         // Interrupt the current thread if it's blocked on I/O
@@ -285,7 +304,7 @@ public class InstrumentConnectionHandler implements Runnable {
      * Cleanup resources with comprehensive error handling
      */
     private void cleanup() {
-        logger.info("Cleaning up connection handler for instrument: {}", instrumentName);
+        log.info("Cleaning up connection handler for instrument: {}", instrumentName);
         
         connected = false;
         running = false;
@@ -294,9 +313,9 @@ public class InstrumentConnectionHandler implements Runnable {
         if (keepAliveService != null) {
             try {
                 keepAliveService.stop();
-                logger.debug("Keep-alive service stopped for {}", instrumentName);
+                log.debug("Keep-alive service stopped for {}", instrumentName);
             } catch (Exception e) {
-                logger.error("Error stopping keep-alive service for {}: {}", instrumentName, e.getMessage());
+                log.error("Error stopping keep-alive service for {}: {}", instrumentName, e.getMessage());
             }
         }
         
@@ -304,23 +323,23 @@ public class InstrumentConnectionHandler implements Runnable {
         try {
             if (protocolStateMachine != null) {
                 protocolStateMachine.close();
-                logger.debug("Protocol state machine closed for {}", instrumentName);
+                log.debug("Protocol state machine closed for {}", instrumentName);
             }
         } catch (Exception e) {
-            logger.error("Error closing protocol state machine for {}: {}", instrumentName, e.getMessage());
+            log.error("Error closing protocol state machine for {}: {}", instrumentName, e.getMessage());
         }
         
         // Close socket last
         try {
             if (socket != null && !socket.isClosed()) {
                 socket.close();
-                logger.debug("Socket closed for {}", instrumentName);
+                log.debug("Socket closed for {}", instrumentName);
             }
         } catch (IOException e) {
-            logger.error("Error closing socket for {}: {}", instrumentName, e.getMessage());
+            log.error("Error closing socket for {}: {}", instrumentName, e.getMessage());
         }
         
-        logger.info("Connection handler cleanup completed for instrument: {} from {}", 
+        log.info("Connection handler cleanup completed for instrument: {} from {}", 
                    instrumentName, getRemoteAddress());
     }
 }

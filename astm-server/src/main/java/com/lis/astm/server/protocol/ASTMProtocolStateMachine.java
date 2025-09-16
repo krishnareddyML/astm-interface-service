@@ -1,7 +1,6 @@
 package com.lis.astm.server.protocol;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,22 +13,27 @@ import java.util.List;
 /**
  * ASTM Protocol State Machine - Production-Ready Thread-Safe Implementation
  * 
- * Handles the low-level ASTM E1381 protocol communication with full thread safety.
- * This class is designed to prevent race conditions between the main connection handler
- * and the keep-alive service by synchronizing all public methods that perform network I/O.
+ * Handles the low-level ASTM E1381 protocol communication with intelligent concurrency management.
+ * This class is designed to allow keep-alive services to maintain connections during idle periods
+ * while ensuring thread safety during active message processing.
  * 
  * Key Production Features:
- * - Thread-safe operation with synchronized methods
+ * - Non-blocking idle listening (allows keep-alive during idle periods)
+ * - Thread-safe message processing with synchronized methods
  * - Robust timeout handling using socket's built-in READ_TIMEOUT_MS
  * - Proper multi-frame message reassembly with newline preservation
  * - Graceful handling of clean disconnects vs. timeouts
  * - Complete protocol state management
  * 
+ * CRITICAL FIX (September 2025):
+ * - receiveMessage() no longer synchronizes during idle listening
+ * - Keep-alive service can now properly maintain connections during idle periods
+ * - Synchronization only occurs during actual message processing
+ * 
  * @author Production Refactoring - September 2025
  */
+@Slf4j
 public class ASTMProtocolStateMachine {
-
-    private static final Logger logger = LoggerFactory.getLogger(ASTMProtocolStateMachine.class);
 
     // Protocol states
     public enum State {
@@ -64,7 +68,7 @@ public class ASTMProtocolStateMachine {
         
         // The socket's read timeout is set in ASTMServer.java (READ_TIMEOUT_MS = 360_000ms = 6 minutes)
         // This is the primary mechanism for handling stale connections and works with keep-alive service
-        logger.info("ASTM Protocol State Machine initialized for instrument: {} with socket timeout: {}ms", 
+        log.info("ASTM Protocol State Machine initialized for instrument: {} with socket timeout: {}ms", 
                    instrumentName, socket.getSoTimeout());
     }
 
@@ -72,7 +76,7 @@ public class ASTMProtocolStateMachine {
      * THREAD-SAFE: Send ENQ (Enquiry) to initiate transmission
      */
     public synchronized boolean sendEnq() throws IOException {
-        logger.debug("Sending ENQ to {}", instrumentName);
+        log.debug("Sending ENQ to {}", instrumentName);
         outputStream.write(ChecksumUtils.ENQ);
         outputStream.flush();
         currentState = State.WAITING_FOR_ACK;
@@ -83,7 +87,7 @@ public class ASTMProtocolStateMachine {
      * THREAD-SAFE: Send ACK (Acknowledge)
      */
     public synchronized boolean sendAck() throws IOException {
-        logger.debug("Sending ACK to {}", instrumentName);
+        log.debug("Sending ACK to {}", instrumentName);
         outputStream.write(ChecksumUtils.ACK);
         outputStream.flush();
         return true;
@@ -93,7 +97,7 @@ public class ASTMProtocolStateMachine {
      * THREAD-SAFE: Send NAK (Negative Acknowledge)
      */
     public synchronized boolean sendNak() throws IOException {
-        logger.debug("Sending NAK to {}", instrumentName);
+        log.debug("Sending NAK to {}", instrumentName);
         outputStream.write(ChecksumUtils.NAK);
         outputStream.flush();
         return true;
@@ -103,7 +107,7 @@ public class ASTMProtocolStateMachine {
      * THREAD-SAFE: Send EOT (End of Transmission)
      */
     public synchronized boolean sendEot() throws IOException {
-        logger.debug("Sending EOT to {}", instrumentName);
+        log.debug("Sending EOT to {}", instrumentName);
         outputStream.write(ChecksumUtils.EOT);
         outputStream.flush();
         currentState = State.IDLE;
@@ -116,7 +120,7 @@ public class ASTMProtocolStateMachine {
      */
     public synchronized boolean sendFrame(String frameData, boolean isLastFrame) throws IOException {
         String frame = ChecksumUtils.buildFrame(currentFrameNumber, frameData, isLastFrame);
-        logger.debug("Sending frame {} to {}: {}", currentFrameNumber, instrumentName, 
+        log.debug("Sending frame {} to {}: {}", currentFrameNumber, instrumentName, 
                     frame.replace("\r", "\\r").replace("\n", "\\n"));
         
         outputStream.write(frame.getBytes());
@@ -128,32 +132,32 @@ public class ASTMProtocolStateMachine {
             try {
                 int response = inputStream.read();
                 if (response == ChecksumUtils.ACK) {
-                    logger.debug("Received ACK for frame {} from {}", currentFrameNumber, instrumentName);
+                    log.debug("Received ACK for frame {} from {}", currentFrameNumber, instrumentName);
                     currentFrameNumber++;
                     if (currentFrameNumber > 7) {
                         currentFrameNumber = 0; // Wrap around after 7
                     }
                     return true;
                 } else if (response == ChecksumUtils.NAK) {
-                    logger.warn("Received NAK for frame {} from {}, retransmitting", currentFrameNumber, instrumentName);
+                    log.warn("Received NAK for frame {} from {}, retransmitting", currentFrameNumber, instrumentName);
                     // Retransmit the same frame
                     outputStream.write(frame.getBytes());
                     outputStream.flush();
                     startTime = System.currentTimeMillis(); // Reset timeout
                 } else if (response == -1) {
-                    logger.error("Connection closed while waiting for ACK from {}", instrumentName);
+                    log.error("Connection closed while waiting for ACK from {}", instrumentName);
                     return false;
                 }
             } catch (SocketTimeoutException e) {
                 // Continue waiting - this is normal behavior during ACK wait
                 Thread.yield();
             } catch (IOException e) {
-                logger.error("IO error waiting for ACK from {}: {}", instrumentName, e.getMessage());
+                log.error("IO error waiting for ACK from {}: {}", instrumentName, e.getMessage());
                 return false;
             }
         }
         
-        logger.error("Timeout waiting for ACK for frame {} from {}", currentFrameNumber, instrumentName);
+        log.error("Timeout waiting for ACK for frame {} from {}", currentFrameNumber, instrumentName);
         return false;
     }
 
@@ -168,11 +172,11 @@ public class ASTMProtocolStateMachine {
      */
     public synchronized boolean sendMessage(String message) throws IOException {
         if (message == null || message.isEmpty()) {
-            logger.warn("Attempting to send empty message to {}", instrumentName);
+            log.warn("Attempting to send empty message to {}", instrumentName);
             return false;
         }
 
-        logger.info("Sending ASTM message to {} ({} characters)", instrumentName, message.length());
+        log.info("Sending ASTM message to {} ({} characters)", instrumentName, message.length());
 
         // Send ENQ first
         if (!sendEnq()) {
@@ -189,23 +193,23 @@ public class ASTMProtocolStateMachine {
                     ackReceived = true;
                     break;
                 } else if (response == ChecksumUtils.NAK || response == ChecksumUtils.EOT) {
-                    logger.warn("Received negative response {} from {} for ENQ", response, instrumentName);
+                    log.warn("Received negative response {} from {} for ENQ", response, instrumentName);
                     return false;
                 } else if (response == -1) {
-                    logger.error("Connection closed while waiting for ENQ ACK from {}", instrumentName);
+                    log.error("Connection closed while waiting for ENQ ACK from {}", instrumentName);
                     return false;
                 }
             } catch (SocketTimeoutException e) {
                 // Continue waiting for ACK
                 Thread.yield();
             } catch (IOException e) {
-                logger.error("IO error waiting for ENQ ACK from {}: {}", instrumentName, e.getMessage());
+                log.error("IO error waiting for ENQ ACK from {}: {}", instrumentName, e.getMessage());
                 return false;
             }
         }
 
         if (!ackReceived) {
-            logger.error("No ACK received for ENQ from {}", instrumentName);
+            log.error("No ACK received for ENQ from {}", instrumentName);
             return false;
         }
 
@@ -225,7 +229,7 @@ public class ASTMProtocolStateMachine {
         for (int i = 0; i < frames.size(); i++) {
             boolean isLastFrame = (i == frames.size() - 1);
             if (!sendFrame(frames.get(i), isLastFrame)) {
-                logger.error("Failed to send frame {} to {}", i + 1, instrumentName);
+                log.error("Failed to send frame {} to {}", i + 1, instrumentName);
                 sendEot(); // Send EOT to clean up
                 return false;
             }
@@ -233,29 +237,65 @@ public class ASTMProtocolStateMachine {
 
         // Send EOT to end transmission
         sendEot();
-        logger.info("Successfully sent ASTM message to {}", instrumentName);
+        log.info("Successfully sent ASTM message to {}", instrumentName);
         return true;
     }
 
     /**
-     * THREAD-SAFE: Receive a complete ASTM message, handling multiple frames correctly
+     * CORRECTED: Listen for incoming data without blocking keep-alive service
      * 
-     * PRODUCTION-READY IMPLEMENTATION that fixes all identified issues:
-     * - Properly handles multi-frame messages with ETB/ETX markers
-     * - Correctly reassembles frames with newlines between records
-     * - Uses socket timeout instead of arbitrary FRAME_TIMEOUT
-     * - Gracefully handles clean disconnects vs. stale connections
-     * - Thread-safe operation to prevent race conditions with keep-alive
+     * CRITICAL FIX: This method no longer synchronizes during idle listening, allowing
+     * the keep-alive service to send messages during idle periods. It only synchronizes
+     * when actually processing an incoming message from the instrument.
+     * 
+     * Expected behavior:
+     * 1. Instrument sends message → Server processes it
+     * 2. Connection goes idle → Keep-alive service maintains connection
+     * 3. Instrument sends new message when it has results → Server processes it
      */
-    public synchronized String receiveMessage() throws IOException {
-        logger.debug("Starting to receive ASTM message from {}", instrumentName);
+    public String receiveMessage() throws IOException {
+        log.debug("Listening for incoming data from {}", instrumentName);
 
-        // 1. Wait for the initial ENQ from the instrument
-        if (!waitForEnq()) {
-            return null; // Return null on timeout or clean disconnect
+        while (true) {
+            try {
+                // This is NOT synchronized - allows keep-alive to interrupt during idle periods
+                int receivedChar = inputStream.read();
+                
+                if (receivedChar == -1) {
+                    // Clean disconnect
+                    log.debug("Connection closed cleanly by {}", instrumentName);
+                    return null;
+                }
+                
+                if (receivedChar == ChecksumUtils.ENQ) {
+                    // Instrument wants to send a message - handle it with synchronization
+                    log.debug("Received ENQ from {}, starting message reception", instrumentName);
+                    return handleIncomingMessageSynchronized();
+                }
+                
+                // For any other character, log and ignore (could be noise, keep-alive response, etc.)
+                log.debug("Received unexpected character '{}' (0x{}) from {}, continuing to listen", 
+                         (char)receivedChar, Integer.toHexString(receivedChar), instrumentName);
+                
+            } catch (SocketTimeoutException e) {
+                // This is where keep-alive should prevent timeouts on healthy connections
+                log.warn("Socket timeout on {} after {}ms - connection appears stale", 
+                         instrumentName, socket.getSoTimeout());
+                return null;
+            }
         }
+    }
 
-        // 2. Acknowledge the ENQ to signal we're ready
+    /**
+     * THREAD-SAFE: Handle actual message reception after ENQ is received
+     * 
+     * This method handles the complete message reception with proper synchronization
+     * but only AFTER an ENQ has been received, so it doesn't block keep-alive during idle.
+     */
+    private synchronized String handleIncomingMessageSynchronized() throws IOException {
+        log.debug("Starting synchronized message reception from {}", instrumentName);
+        
+        // Send ACK for the ENQ
         sendAck();
         currentState = State.RECEIVING;
         receivedFrames.clear();
@@ -263,27 +303,27 @@ public class ASTMProtocolStateMachine {
         StringBuilder completeMessage = new StringBuilder();
         int expectedFrameNumber = 1;
 
-        // 3. Loop, receiving frames until the transmission is ended by EOT
+        // Loop, receiving frames until the transmission is ended by EOT
         while (true) {
             String frame = receiveFrame();
             
             // Check for End of Transmission (EOT)
             if (frame != null && frame.length() > 0 && frame.charAt(0) == ChecksumUtils.EOT) {
-                logger.debug("Received EOT from {}, transmission finished", instrumentName);
+                log.debug("Received EOT from {}, transmission finished", instrumentName);
                 currentState = State.IDLE;
                 break; // Exit the loop
             }
             
             // If the frame is null, there was a timeout or connection error
             if (frame == null) {
-                logger.error("Failed to receive frame from {} (timeout or connection closed)", instrumentName);
+                log.error("Failed to receive frame from {} (timeout or connection closed)", instrumentName);
                 sendEot(); // Attempt to clean up
                 return null;
             }
 
             // Validate the frame's checksum
             if (!ChecksumUtils.validateFrameChecksum(frame)) {
-                logger.warn("Invalid checksum for frame from {}, sending NAK", instrumentName);
+                log.warn("Invalid checksum for frame from {}, sending NAK", instrumentName);
                 sendNak();
                 continue; // Go back to the start of the loop to wait for retransmission
             }
@@ -291,7 +331,7 @@ public class ASTMProtocolStateMachine {
             // Validate the frame's sequence number
             int frameNumber = ChecksumUtils.extractFrameNumber(frame);
             if (frameNumber != expectedFrameNumber) {
-                logger.warn("Unexpected frame number {} (expected {}) from {}, sending NAK", 
+                log.warn("Unexpected frame number {} (expected {}) from {}, sending NAK", 
                           frameNumber, expectedFrameNumber, instrumentName);
                 sendNak();
                 continue;
@@ -318,49 +358,13 @@ public class ASTMProtocolStateMachine {
 
         String result = completeMessage.toString();
         if (!result.isEmpty()) {
-            logger.info("Successfully received and assembled ASTM message from {} ({} characters, {} frames)", 
+            log.info("Successfully received and assembled ASTM message from {} ({} characters, {} frames)", 
                        instrumentName, result.length(), receivedFrames.size());
         }
 
         return result.isEmpty() ? null : result;
     }
 
-
-    /**
-     * PRODUCTION-READY: Wait for ENQ from instrument using socket's built-in timeout
-     * 
-     * This method relies solely on the socket's READ_TIMEOUT_MS (6 minutes) for timeout handling.
-     * When a SocketTimeoutException occurs, it indicates the connection is truly stale and
-     * should be closed. The AstmKeepAliveService prevents this on healthy connections.
-     */
-    private boolean waitForEnq() throws IOException {
-        logger.debug("Waiting for ENQ from {}", instrumentName);
-
-        while (true) {
-            try {
-                // This call blocks until data arrives or the socket's READ_TIMEOUT_MS is reached
-                int receivedChar = inputStream.read();
-
-                if (receivedChar == ChecksumUtils.ENQ) {
-                    logger.debug("Received ENQ from {}", instrumentName);
-                    return true; // Success
-                } else if (receivedChar == -1) {
-                    // The client has properly closed the connection
-                    logger.debug("Connection closed cleanly by client while waiting for ENQ from {}", instrumentName);
-                    return false; // Clean disconnect - handler should terminate
-                }
-                // If any other character is received, ignore it and continue waiting for ENQ
-                
-            } catch (SocketTimeoutException e) {
-                // This is NOT an error. It's the socket's read timeout (6 minutes) expiring.
-                // The AstmKeepAliveService prevents this on healthy connections.
-                // If it happens, the connection is truly stale and should be closed.
-                logger.warn("Socket read timeout after {}ms while waiting for ENQ from {}. Connection appears stale.", 
-                           socket.getSoTimeout(), instrumentName);
-                return false; // Signal stale connection - handler should terminate
-            }
-        }
-    }
 
     /**
      * PRODUCTION-READY: Receive a single frame using socket's built-in timeout
@@ -378,7 +382,7 @@ public class ASTMProtocolStateMachine {
                 
                 if (receivedChar == -1) {
                     // Clean disconnect
-                    logger.debug("Connection closed cleanly while receiving frame from {}", instrumentName);
+                    log.debug("Connection closed cleanly while receiving frame from {}", instrumentName);
                     return null;
                 }
 
@@ -397,14 +401,14 @@ public class ASTMProtocolStateMachine {
                     // A complete frame ends with a Line Feed (LF) character
                     if (receivedChar == ChecksumUtils.LF) {
                         String frameStr = frame.toString();
-                        logger.debug("Received complete frame from {}: {}", 
+                        log.debug("Received complete frame from {}: {}", 
                                    instrumentName, frameStr.replace("\r", "\\r").replace("\n", "\\n"));
                         return frameStr;
                     }
                 }
             } catch (SocketTimeoutException e) {
                 // The instrument failed to send a complete frame within READ_TIMEOUT_MS
-                logger.error("Timeout receiving complete frame from {} after {}ms. Instrument may have stalled.", 
+                log.error("Timeout receiving complete frame from {} after {}ms. Instrument may have stalled.", 
                            instrumentName, socket.getSoTimeout());
                 return null;
             }
@@ -425,7 +429,7 @@ public class ASTMProtocolStateMachine {
         currentState = State.IDLE;
         currentFrameNumber = 1;
         receivedFrames.clear();
-        logger.debug("Reset ASTM protocol state machine for {}", instrumentName);
+        log.debug("Reset ASTM protocol state machine for {}", instrumentName);
     }
 
     /**
@@ -449,9 +453,9 @@ public class ASTMProtocolStateMachine {
             if (socket != null && !socket.isClosed()) {
                 socket.close();
             }
-            logger.info("Closed ASTM protocol connection for {}", instrumentName);
+            log.info("Closed ASTM protocol connection for {}", instrumentName);
         } catch (IOException e) {
-            logger.error("Error closing ASTM protocol connection for {}: {}", instrumentName, e.getMessage());
+            log.error("Error closing ASTM protocol connection for {}: {}", instrumentName, e.getMessage());
         }
     }
 }

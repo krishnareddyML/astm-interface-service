@@ -16,6 +16,9 @@ lis:
   messaging:
     enabled: true  # Enable RabbitMQ for production
 
+# Logging configuration  
+log_path: D:/astm-interface-services-data/logs
+
 # Production RabbitMQ Configuration
 spring:
   rabbitmq:
@@ -26,16 +29,6 @@ spring:
     connection-timeout: 60s  # Longer timeout for production
     requested-heartbeat: 30s  # More frequent heartbeat for production monitoring
 
-# Production Logging Configuration
-logging:
-  level:
-    "[com.lis.astm]": INFO  # Standard production logging
-    "[org.springframework.amqp]": WARN
-    "[org.springframework.boot]": ERROR  # Only errors for Spring Boot in production
-    "[org.springframework.security]": WARN
-    root: WARN  # Conservative logging for production
-  file:
-    name: /var/log/lis/astm-interface-service.log  # Standard production log location
 
 # Production Server Configuration
 server:

@@ -4,8 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.lis.astm.model.AstmMessage;
 import com.lis.astm.server.config.AppConfig;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -15,9 +14,8 @@ import org.springframework.stereotype.Component;
  * Sends parsed result data to the Core LIS via RabbitMQ
  */
 @Component
+@Slf4j
 public class ResultQueuePublisher {
-
-    private static final Logger logger = LoggerFactory.getLogger(ResultQueuePublisher.class);
 
     @Autowired
     private RabbitTemplate rabbitTemplate;
@@ -39,12 +37,12 @@ public class ResultQueuePublisher {
      */
     public void publishResult(AstmMessage astmMessage) {
         if (astmMessage == null) {
-            logger.warn("Cannot publish null ASTM message");
+            log.warn("Cannot publish null ASTM message");
             return;
         }
 
         if (appConfig.getMessaging() == null || !appConfig.getMessaging().isEnabled()) {
-            logger.debug("Messaging is disabled, skipping result publication for instrument: {}", 
+            log.debug("Messaging is disabled, skipping result publication for instrument: {}", 
                         astmMessage.getInstrumentName());
             return;
         }
@@ -53,7 +51,7 @@ public class ResultQueuePublisher {
             // Find the instrument configuration to get the correct result queue
             AppConfig.InstrumentConfig instrumentConfig = findInstrumentConfig(astmMessage.getInstrumentName());
             if (instrumentConfig == null) {
-                logger.error("No configuration found for instrument: {}", astmMessage.getInstrumentName());
+                log.error("No configuration found for instrument: {}", astmMessage.getInstrumentName());
                 return;
             }
 
@@ -89,12 +87,12 @@ public class ResultQueuePublisher {
                 });
             }
 
-            logger.info("Successfully published ASTM message to instrument-specific queue '{}' from instrument '{}': {} results, {} orders",
+            log.info("Successfully published ASTM message to instrument-specific queue '{}' from instrument '{}': {} results, {} orders",
                        queueName, astmMessage.getInstrumentName(), 
                        astmMessage.getResultCount(), astmMessage.getOrderCount());
 
         } catch (Exception e) {
-            logger.error("Failed to publish ASTM message from instrument '{}' to queue: {}", 
+            log.error("Failed to publish ASTM message from instrument '{}' to queue: {}", 
                         astmMessage.getInstrumentName(), e.getMessage(), e);
             
             // Optionally implement retry mechanism or dead letter queue handling here
@@ -117,7 +115,7 @@ public class ResultQueuePublisher {
             // Find the instrument configuration to get the correct result queue
             AppConfig.InstrumentConfig instrumentConfig = findInstrumentConfig(instrumentName);
             if (instrumentConfig == null) {
-                logger.warn("No configuration found for instrument: {}, using default queue", instrumentName);
+                log.warn("No configuration found for instrument: {}, using default queue", instrumentName);
                 // Fall back to default result queue
                 publishStatusToQueue(instrumentName, status, appConfig.getMessaging().getResultQueueName() + ".status");
                 return;
@@ -128,7 +126,7 @@ public class ResultQueuePublisher {
             publishStatusToQueue(instrumentName, status, queueName);
 
         } catch (Exception e) {
-            logger.error("Failed to publish status message from instrument '{}': {}", 
+            log.error("Failed to publish status message from instrument '{}': {}", 
                         instrumentName, e.getMessage());
         }
     }
@@ -147,10 +145,10 @@ public class ResultQueuePublisher {
                 return message;
             });
 
-            logger.debug("Published status message from instrument '{}' to queue '{}': {}", 
+            log.debug("Published status message from instrument '{}' to queue '{}': {}", 
                         instrumentName, queueName, status);
         } catch (Exception e) {
-            logger.error("Failed to publish status message from instrument '{}' to queue '{}': {}", 
+            log.error("Failed to publish status message from instrument '{}' to queue '{}': {}", 
                         instrumentName, queueName, e.getMessage());
         }
     }
@@ -160,7 +158,7 @@ public class ResultQueuePublisher {
      * Could implement retry logic, dead letter queue, or other error handling strategies
      */
     private void handlePublishError(AstmMessage astmMessage, Exception error) {
-        logger.error("Message publication failed for instrument '{}'. Error: {}", 
+        log.error("Message publication failed for instrument '{}'. Error: {}", 
                     astmMessage.getInstrumentName(), error.getMessage());
         
         // Error handling strategies can be implemented here in the future
@@ -176,11 +174,11 @@ public class ResultQueuePublisher {
             String queueName = appConfig.getMessaging().getResultQueueName() + ".test";
             
             rabbitTemplate.convertAndSend(queueName, testMessage);
-            logger.info("Successfully sent test message to queue: {}", queueName);
+            log.info("Successfully sent test message to queue: {}", queueName);
             return true;
             
         } catch (Exception e) {
-            logger.error("Failed to send test message to queue: {}", e.getMessage());
+            log.error("Failed to send test message to queue: {}", e.getMessage());
             return false;
         }
     }

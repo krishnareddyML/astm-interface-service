@@ -14,6 +14,9 @@ lis:
   # Development messaging configuration (enabled for integration testing)
   messaging:
     enabled: true  # Enable RabbitMQ for development
+    
+# Custom properties for application
+log_path: D:/astm-interface-services-data/logs
 
 # Development RabbitMQ Configuration
 spring:
@@ -23,14 +26,6 @@ spring:
     username: ${RABBITMQ_USERNAME:dev_user}
     password: ${RABBITMQ_PASSWORD:dev_password}
 
-# Development Logging Configuration
-logging:
-  level:
-    "[com.lis.astm]": INFO  # Standard logging for development
-    "[org.springframework.amqp]": WARN
-    "[org.springframework.boot]": WARN
-  file:
-    name: logs/astm-interface-service-dev.log
 
 # Development Server Configuration
 server:

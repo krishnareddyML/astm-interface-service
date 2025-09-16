@@ -3,8 +3,7 @@ package com.lis.astm.server.core;
 import com.lis.astm.server.config.AppConfig;
 import com.lis.astm.server.driver.InstrumentDriver;
 import com.lis.astm.server.messaging.ResultQueuePublisher;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -25,10 +24,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Main ASTM Server component that manages TCP listeners for multiple instruments.
  * Handles incoming connections and creates isolated connection handlers.
  */
+@Slf4j
 @Component
 public class ASTMServer {
-
-    private static final Logger logger = LoggerFactory.getLogger(ASTMServer.class);
 
     // Network defaults (can be moved to AppConfig later)
     private static final int ACCEPT_TIMEOUT_MS = 1_000;     // accept() wake interval
@@ -60,16 +58,16 @@ public class ASTMServer {
     @PostConstruct
     public void startServer() {
         if (running) {
-            logger.warn("ASTM Interface Server is already running; start skipped.");
+            log.warn("ASTM Interface Server is already running; start skipped.");
             return;
         }
-        logger.info("Starting ASTM Interface Server...");
+        log.info("Starting ASTM Interface Server...");
 
         final List<AppConfig.InstrumentConfig> instruments =
                 appConfig.getInstruments() != null ? appConfig.getInstruments() : java.util.Collections.emptyList();
 
         if (instruments.isEmpty()) {
-            logger.warn("No instruments configured. Server will start but no listeners will be created.");
+            log.warn("No instruments configured. Server will start but no listeners will be created.");
             // We still initialize executors to allow hot-reload adding instruments later if applicable.
         }
 
@@ -105,20 +103,20 @@ public class ASTMServer {
             if (cfg.isEnabled()) {
                 startInstrumentListener(cfg);
             } else {
-                logger.info("Instrument {} is disabled, skipping", cfg.getName());
+                log.info("Instrument {} is disabled, skipping", cfg.getName());
             }
         }
 
-        logger.info("ASTM Interface Server started with {} instrument listener(s).", serverSockets.size());
+        log.info("ASTM Interface Server started with {} instrument listener(s).", serverSockets.size());
     }
 
     @PreDestroy
     public void stopServer() {
         if (!running) {
-            logger.info("ASTM Interface Server already stopped.");
+            log.info("ASTM Interface Server already stopped.");
             return;
         }
-        logger.info("Stopping ASTM Interface Server...");
+        log.info("Stopping ASTM Interface Server...");
         running = false;
 
         // Cancel listener tasks (sets interrupt flag)
@@ -126,7 +124,7 @@ public class ASTMServer {
             try {
                 e.getValue().cancel(true);
             } catch (Exception ex) {
-                logger.warn("Error cancelling listener task for {}: {}", e.getKey(), ex.toString(), ex);
+                log.warn("Error cancelling listener task for {}: {}", e.getKey(), ex.toString(), ex);
             }
         }
         serverTasks.clear();
@@ -142,7 +140,7 @@ public class ASTMServer {
         shutdownAndAwait(connectionExecutor, "connectionExecutor");
         shutdownAndAwait(keepAliveScheduler, "keepAliveScheduler");
 
-        logger.info("ASTM Interface Server stopped.");
+        log.info("ASTM Interface Server stopped.");
     }
 
     // ---- Listener setup ----
@@ -157,7 +155,7 @@ public class ASTMServer {
             serverSockets.put(name, serverSocket);
             activeConnections.put(name, new CopyOnWriteArrayList<>());
 
-            logger.info("Started TCP listener for {} on port {}", name, config.getPort());
+            log.info("Started TCP listener for {} on port {}", name, config.getPort());
 
             Future<?> task = serverExecutor.submit(() -> {
                 Thread.currentThread().setName("ASTM-Server-" + name);
@@ -166,7 +164,7 @@ public class ASTMServer {
             serverTasks.put(name, task);
 
         } catch (IOException e) {
-            logger.error("Failed to start listener for {} on port {}",
+            log.error("Failed to start listener for {} on port {}",
                     name, config.getPort(), e);
         }
     }
@@ -174,7 +172,7 @@ public class ASTMServer {
     // ---- Accept loop per instrument ----
     private void runInstrumentListener(AppConfig.InstrumentConfig config, ServerSocket serverSocket) {
         final String instrument = config.getName();
-        logger.info("Instrument listener running for {} on port {}", instrument, config.getPort());
+        log.info("Instrument listener running for {} on port {}", instrument, config.getPort());
 
         while (running && !serverSocket.isClosed()) {
             try {
@@ -187,10 +185,10 @@ public class ASTMServer {
                     clientSocket.setKeepAlive(true);
                     clientSocket.setSoTimeout(READ_TIMEOUT_MS);
                 } catch (Exception sox) {
-                    logger.warn("Unable to set socket options for {}: {}", instrument, sox.toString(), sox);
+                    log.warn("Unable to set socket options for {}: {}", instrument, sox.toString(), sox);
                 }
 
-                logger.info("Accepted connection from {} for instrument {}",
+                log.info("Accepted connection from {} for instrument {}",
                         clientSocket.getRemoteSocketAddress(), instrument);
 
                 // Enforce per-instrument connection limit
@@ -198,7 +196,7 @@ public class ASTMServer {
                         activeConnections.computeIfAbsent(instrument, k -> new CopyOnWriteArrayList<>());
 
                 if (connections.size() >= config.getMaxConnections()) {
-                    logger.warn("Max connections ({}) reached for {}, rejecting connection",
+                    log.warn("Max connections ({}) reached for {}, rejecting connection",
                             config.getMaxConnections(), instrument);
                     safeClose(clientSocket);
                     continue;
@@ -207,7 +205,7 @@ public class ASTMServer {
                 // Create instrument driver
                 InstrumentDriver driver = createInstrumentDriver(config);
                 if (driver == null) {
-                    logger.error("Failed to create driver for instrument {}, rejecting connection", instrument);
+                    log.error("Failed to create driver for instrument {}, rejecting connection", instrument);
                     safeClose(clientSocket);
                     continue;
                 }
@@ -230,39 +228,39 @@ public class ASTMServer {
                     try {
                         handler.run();
                     } catch (Throwable t) {
-                        logger.error("Handler crashed for {}: {}", instrument, t.toString(), t);
+                        log.error("Handler crashed for {}: {}", instrument, t.toString(), t);
                     } finally {
                         connections.remove(handler);
                         Thread.currentThread().setName(prevName);
-                        logger.info("Connection handler closed for {} (active: {})", instrument, connections.size());
+                        log.info("Connection handler closed for {} (active: {})", instrument, connections.size());
                     }
                 });
 
-                logger.info("Created connection handler for {} (active: {})", instrument, connections.size());
+                log.info("Created connection handler for {} (active: {})", instrument, connections.size());
 
             } catch (SocketTimeoutException ste) {
                 // Accept timed out; loop checks `running` again
             } catch (IOException ioe) {
                 if (running) {
-                    logger.error("I/O error accepting connection for {}: {}", instrument, ioe.toString(), ioe);
+                    log.error("I/O error accepting connection for {}: {}", instrument, ioe.toString(), ioe);
                 }
                 break; // exit loop if socket likely closed/fatal
             } catch (Throwable t) {
-                logger.error("Unexpected error in listener for {}: {}", instrument, t.toString(), t);
+                log.error("Unexpected error in listener for {}: {}", instrument, t.toString(), t);
             }
         }
 
-        logger.info("Instrument listener stopped for {}", instrument);
+        log.info("Instrument listener stopped for {}", instrument);
     }
 
     // ---- Driver creation (reflection) ----
     private InstrumentDriver createInstrumentDriver(AppConfig.InstrumentConfig config) {
         try {
-            logger.debug("Creating instrument driver: {}", config.getDriverClassName());
+            log.debug("Creating instrument driver: {}", config.getDriverClassName());
             Class<?> driverClass = Class.forName(config.getDriverClassName());
             return (InstrumentDriver) driverClass.getDeclaredConstructor().newInstance();
         } catch (Exception e) {
-            logger.error("Failed to create instrument driver {}",
+            log.error("Failed to create instrument driver {}",
                     config.getDriverClassName(), e);
             return null;
         }
@@ -315,7 +313,7 @@ public class ASTMServer {
         Thread t = new Thread(r, prefix + idx);
         t.setDaemon(false);
         t.setUncaughtExceptionHandler((th, ex) ->
-                logger.error("Uncaught in {}: {}", th.getName(), ex.toString(), ex));
+                log.error("Uncaught in {}: {}", th.getName(), ex.toString(), ex));
         return t;
     }
 
@@ -324,7 +322,7 @@ public class ASTMServer {
             try {
                 e.getValue().close();
             } catch (IOException ex) {
-                logger.warn("Error closing server socket for {}: {}", e.getKey(), ex.toString(), ex);
+                log.warn("Error closing server socket for {}: {}", e.getKey(), ex.toString(), ex);
             }
         }
         serverSockets.clear();
@@ -336,7 +334,7 @@ public class ASTMServer {
                 try {
                     handler.stop();
                 } catch (Throwable t) {
-                    logger.warn("Error stopping handler for {}: {}", e.getKey(), t.toString(), t);
+                    log.warn("Error stopping handler for {}: {}", e.getKey(), t.toString(), t);
                 }
             }
         }
@@ -348,10 +346,10 @@ public class ASTMServer {
         es.shutdown();
         try {
             if (!es.awaitTermination(AWAIT_SEC, TimeUnit.SECONDS)) {
-                logger.warn("{} did not terminate in {}s; forcing shutdownNow()", name, AWAIT_SEC);
+                log.warn("{} did not terminate in {}s; forcing shutdownNow()", name, AWAIT_SEC);
                 es.shutdownNow();
                 if (!es.awaitTermination(10, TimeUnit.SECONDS)) {
-                    logger.warn("{} still not terminated after shutdownNow()", name);
+                    log.warn("{} still not terminated after shutdownNow()", name);
                 }
             }
         } catch (InterruptedException ie) {

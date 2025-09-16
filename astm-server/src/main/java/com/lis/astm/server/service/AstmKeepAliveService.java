@@ -1,8 +1,7 @@
 package com.lis.astm.server.service;
 
 import com.lis.astm.server.protocol.ASTMProtocolStateMachine;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -27,9 +26,8 @@ import java.util.concurrent.TimeUnit;
  * 
  * @author Production Refactoring - September 2025
  */
+@Slf4j
 public class AstmKeepAliveService {
-    
-    private static final Logger logger = LoggerFactory.getLogger(AstmKeepAliveService.class);
     
     private static final DateTimeFormatter ASTM_DATETIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     
@@ -56,18 +54,18 @@ public class AstmKeepAliveService {
         this.protocolStateMachine = protocolStateMachine;
         this.scheduler = scheduler;
         
-        logger.info("ASTM Keep-Alive Service created for instrument: {} with interval: {} minutes", 
+        log.info("ASTM Keep-Alive Service created for instrument: {} with interval: {} minutes", 
                    instrumentName, intervalMinutes);
     }
     
     public synchronized void start() {
         if (intervalMinutes <= 0 || intervalMinutes > 1440) {
-            logger.info("Keep-Alive disabled for instrument: {} (invalid interval: {})", instrumentName, intervalMinutes);
+            log.info("Keep-Alive disabled for instrument: {} (invalid interval: {})", instrumentName, intervalMinutes);
             return;
         }
         
         if (enabled) {
-            logger.warn("Keep-Alive service already started for instrument: {}", instrumentName);
+            log.warn("Keep-Alive service already started for instrument: {}", instrumentName);
             return;
         }
         
@@ -85,7 +83,7 @@ public class AstmKeepAliveService {
             TimeUnit.MILLISECONDS
         );
         
-        logger.info("ASTM Keep-Alive Service started for instrument: {} with {} minute intervals", 
+        log.info("ASTM Keep-Alive Service started for instrument: {} with {} minute intervals", 
                    instrumentName, intervalMinutes);
     }
     
@@ -97,60 +95,60 @@ public class AstmKeepAliveService {
             keepAliveTask = null;
         }
         
-        logger.info("ASTM Keep-Alive Service stopped for instrument: {} (attempts: {}, failures: {})", 
+        log.info("ASTM Keep-Alive Service stopped for instrument: {} (attempts: {}, failures: {})", 
                    instrumentName, keepAliveAttempts, consecutiveFailures);
     }
     
     /**
      * PRODUCTION-READY: Send complete keep-alive message using full ASTM protocol
      * 
+     * CRITICAL FIX: Removed synchronization deadlock that prevented keep-alive during idle periods.
+     * The main handler thread no longer holds locks during idle listening, so keep-alive can now
+     * function properly to maintain connections during idle periods.
+     * 
      * This method now properly handles the complete ASTM protocol sequence:
      * 1. Build a valid ASTM keep-alive message (Header + Terminator records)
      * 2. Use ASTMProtocolStateMachine.sendMessage() for proper protocol handling
      * 3. Handle all errors gracefully with retry logic
-     * 4. Coordinate with main handler thread through synchronization
+     * 4. No longer blocks on main handler thread during idle periods
      */
     private void sendKeepAlive() {
         if (!enabled || keepAliveInProgress || !protocolStateMachine.isConnected()) {
             return;
         }
         
-        // CRITICAL FIX: Synchronize on protocolStateMachine to prevent race condition
-        // with the main connection handler thread
-        synchronized (protocolStateMachine) {
-            try {
-                keepAliveInProgress = true;
-                keepAliveAttempts++;
-                
-                logger.debug("Initiating keep-alive sequence #{} for instrument: {}", 
-                           keepAliveAttempts, instrumentName);
-                
-                // Build a complete, valid ASTM keep-alive message
-                String keepAliveMessage = buildKeepAliveMessage();
-                
-                // CRITICAL FIX: Use the state machine's sendMessage() method instead of just sending ENQ
-                // This handles the complete protocol: ENQ -> ACK -> frames -> ACK -> EOT
-                boolean success = protocolStateMachine.sendMessage(keepAliveMessage);
+        try {
+            keepAliveInProgress = true;
+            keepAliveAttempts++;
+            
+            log.debug("Initiating keep-alive sequence #{} for instrument: {}", 
+                       keepAliveAttempts, instrumentName);
+            
+            // Build a complete, valid ASTM keep-alive message
+            String keepAliveMessage = buildKeepAliveMessage();
+            
+            // CRITICAL FIX: No longer synchronize on protocolStateMachine
+            // The receiveMessage() method now allows keep-alive during idle periods
+            boolean success = protocolStateMachine.sendMessage(keepAliveMessage);
 
-                if (success) {
-                    lastKeepAliveSent = LocalDateTime.now();
-                    consecutiveFailures = 0; // Reset failure counter on success
-                    logger.info("Successfully sent keep-alive message to instrument: {} (attempt #{})", 
-                               instrumentName, keepAliveAttempts);
-                } else {
-                    handleKeepAliveFailure(new IOException("Protocol state machine failed to send keep-alive"));
-                }
-                
-            } catch (IOException e) {
-                logger.error("IO error during keep-alive for instrument {}: {}", instrumentName, e.getMessage());
-                handleKeepAliveFailure(e);
-            } catch (Exception e) {
-                logger.error("Unexpected error during keep-alive for instrument {}: {}", 
-                           instrumentName, e.getMessage(), e);
-                handleKeepAliveFailure(e);
-            } finally {
-                keepAliveInProgress = false;
+            if (success) {
+                lastKeepAliveSent = LocalDateTime.now();
+                consecutiveFailures = 0; // Reset failure counter on success
+                log.info("Successfully sent keep-alive message to instrument: {} (attempt #{})", 
+                           instrumentName, keepAliveAttempts);
+            } else {
+                handleKeepAliveFailure(new IOException("Protocol state machine failed to send keep-alive"));
             }
+            
+        } catch (IOException e) {
+            log.error("IO error during keep-alive for instrument {}: {}", instrumentName, e.getMessage());
+            handleKeepAliveFailure(e);
+        } catch (Exception e) {
+            log.error("Unexpected error during keep-alive for instrument {}: {}", 
+                       instrumentName, e.getMessage(), e);
+            handleKeepAliveFailure(e);
+        } finally {
+            keepAliveInProgress = false;
         }
     }
 
@@ -180,7 +178,7 @@ public class AstmKeepAliveService {
     public boolean handleIncomingKeepAlive(String message) {
         if (isKeepAliveMessage(message)) {
             lastKeepAliveReceived = LocalDateTime.now();
-            logger.debug("Identified incoming keep-alive message from instrument: {}", instrumentName);
+            log.debug("Identified incoming keep-alive message from instrument: {}", instrumentName);
             return true;
         }
         return false;
@@ -209,11 +207,11 @@ public class AstmKeepAliveService {
     private void handleKeepAliveFailure(Exception e) {
         consecutiveFailures++;
         
-        logger.error("Keep-alive failed for instrument: {} (failure #{} of {}): {}", 
+        log.error("Keep-alive failed for instrument: {} (failure #{} of {}): {}", 
                     instrumentName, consecutiveFailures, MAX_CONSECUTIVE_FAILURES, e.getMessage());
         
         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-            logger.error("Maximum consecutive keep-alive failures ({}) reached for instrument: {}. " +
+            log.error("Maximum consecutive keep-alive failures ({}) reached for instrument: {}. " +
                         "Connection may be unstable.", MAX_CONSECUTIVE_FAILURES, instrumentName);
             // Could implement additional recovery logic here (e.g., connection reset)
         }
