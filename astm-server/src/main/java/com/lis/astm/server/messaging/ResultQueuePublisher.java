@@ -41,7 +41,7 @@ public class ResultQueuePublisher {
             return;
         }
 
-        if (appConfig.getMessaging() == null || !appConfig.getMessaging().isEnabled()) {
+        if (appConfig.getInstruments() == null || !appConfig.getMessaging().isEnabled()) {
             log.debug("Messaging is disabled, skipping result publication for instrument: {}", 
                         astmMessage.getInstrumentName());
             return;
@@ -59,10 +59,10 @@ public class ResultQueuePublisher {
             String messageJson = objectMapper.writeValueAsString(astmMessage);
 
             // Get instrument-specific result queue name
-            String queueName = instrumentConfig.getEffectiveResultQueueName(appConfig.getMessaging());
-            String exchangeName = appConfig.getMessaging().getExchangeName();
+            String queueName = instrumentConfig.getResultQueueName();
+            String exchangeName = instrumentConfig.getExchangeName();
 
-            // Publish to queue
+            // Publish to queue`
             if (exchangeName != null && !exchangeName.trim().isEmpty()) {
                 // Use exchange-based routing
                 rabbitTemplate.convertAndSend(exchangeName, queueName, messageJson, message -> {
@@ -117,12 +117,12 @@ public class ResultQueuePublisher {
             if (instrumentConfig == null) {
                 log.warn("No configuration found for instrument: {}, using default queue", instrumentName);
                 // Fall back to default result queue
-                publishStatusToQueue(instrumentName, status, appConfig.getMessaging().getResultQueueName() + ".status");
+                //publishStatusToQueue(instrumentName, status, appConfig.getMessaging().getResultQueueName() + ".status");
                 return;
             }
 
             // Use instrument-specific result queue with .status suffix
-            String queueName = instrumentConfig.getEffectiveResultQueueName(appConfig.getMessaging()) + ".status";
+            String queueName = instrumentConfig.getResultQueueName();
             publishStatusToQueue(instrumentName, status, queueName);
 
         } catch (Exception e) {
@@ -171,7 +171,7 @@ public class ResultQueuePublisher {
         try {
             // Send a simple test message
             String testMessage = "{\"test\": true, \"timestamp\": " + System.currentTimeMillis() + "}";
-            String queueName = appConfig.getMessaging().getResultQueueName() + ".test";
+            String queueName = "astm.test.queue";
             
             rabbitTemplate.convertAndSend(queueName, testMessage);
             log.info("Successfully sent test message to queue: {}", queueName);

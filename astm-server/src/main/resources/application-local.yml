@@ -1,6 +1,3 @@
-# Local Development Environment Configuration
-# This profile is for local development with minimal external dependencies
-
 # Local-specific configuration
 lis:
   instruments:
@@ -10,24 +7,42 @@ lis:
       maxConnections: 5
       enabled: true  # Enable for local testing
       connectionTimeoutSeconds: 30  # Shorter timeout for local testing
-      keepAliveIntervalMinutes: 5  # Send keep-alive every 5 minutes for testing
-      orderQueueName: lis.orders.outbound.orthoVision
-      resultQueueName: lis.results.inbound.orthoVision
+      keepAliveIntervalMinutes: 2  # Send keep-alive every 5 minutes for testing
+      orderQueueName: ortho-vision.orders.queue
+      resultQueueName: ortho-vision.results.queue
+      exchangeName: ortho-vision-exchange
       
   # Local messaging configuration (disabled for local development)
   messaging:
-    enabled: false  # Disable RabbitMQ for local development
-    defaultOrderQueuePrefix: lis.orders.outbound.
-    resultQueueName: lis.results.inbound
-    exchangeName: lis.exchange
+    enabled: true  # Enable for testing database-backed order processing
+    retry:
+      batch-size: 5
+      max-attempts: 3
+      collision-delay-minutes: 2  # Shorter delays for local testing
+      connection-delay-minutes: 5
+      schedule-interval-ms: 60000  # 1 minute for local testing
     
+
 # Custom properties for application
 log_path: D:/astm-interface-services-data/logs
 
-# Local RabbitMQ Configuration (for when messaging is enabled)
+# Local Database Configuration (MS SQL Server)
 spring:
+  datasource:
+    url: jdbc:sqlserver://192.168.20.123:1433;databaseName=infinity-lis;trustServerCertificate=true
+    username: ${DB_USERNAME:medsa}
+    password: ${DB_PASSWORD:Lahari01}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+  
+  # Enable scheduling for retry processing
+  task:
+    scheduling:
+      pool:
+        size: 2
+
+  # Local RabbitMQ Configuration (for when messaging is enabled)
   rabbitmq:
-    host: localhost
+    host: http://192.168.20.95
     port: 5672
     username: guest
     password: guest

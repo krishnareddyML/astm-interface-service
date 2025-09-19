@@ -34,31 +34,13 @@ public class AppConfig {
         // Queue names bound to instrument level
         private String orderQueueName;     // Inbound orders queue (LIS → Instrument)
         private String resultQueueName;    // Outbound results queue (Instrument → LIS)
-        
+        private String exchangeName;       // Optional exchange name for routing
+
         public boolean isKeepAliveEnabled() {
             return keepAliveIntervalMinutes > 0 && keepAliveIntervalMinutes <= 1440;
         }
 
-        /**
-         * Get the effective order queue name for this instrument.
-         * Uses instrument-specific queue if configured, otherwise falls back to global messaging config.
-         */
-        public String getEffectiveOrderQueueName(MessagingConfig globalMessaging) {
-            return (orderQueueName != null && !orderQueueName.trim().isEmpty()) 
-                ? orderQueueName 
-                : globalMessaging.getDefaultOrderQueueName(this.name);
-        }
-
-        /**
-         * Get the effective result queue name for this instrument.
-         * Uses instrument-specific queue if configured, otherwise falls back to global messaging config.
-         */
-        public String getEffectiveResultQueueName(MessagingConfig globalMessaging) {
-            return (resultQueueName != null && !resultQueueName.trim().isEmpty()) 
-                ? resultQueueName 
-                : globalMessaging.getResultQueueName();
-        }
-
+        
         @Override
         public String toString() {
             return "InstrumentConfig{" +
@@ -66,8 +48,15 @@ public class AppConfig {
                     ", port=" + port +
                     ", driverClassName='" + driverClassName + '\'' +
                     ", enabled=" + enabled +
+                    ", maxConnections=" + maxConnections +
+                    ", connectionTimeoutSeconds=" + connectionTimeoutSeconds +
+                    ", keepAliveIntervalMinutes=" + keepAliveIntervalMinutes +
+                    ", orderQueueName='" + orderQueueName + '\'' +
+                    ", resultQueueName='" + resultQueueName + '\'' +
+                    ", exchangeName='" + exchangeName + '\'' +
                     '}';
         }
+
     }
 
     /**
@@ -75,33 +64,11 @@ public class AppConfig {
      */
     @Data
     public static class MessagingConfig {
-        private String defaultOrderQueuePrefix = "lis.orders.outbound.";
-        private String defaultResultQueueName = "lis.results.inbound";
-        private String exchangeName = "lis.exchange";
-        private boolean enabled = true;
-
-        /**
-         * Generate default order queue name for instruments that don't have explicit configuration
-         */
-        public String getDefaultOrderQueueName(String instrumentName) {
-            return defaultOrderQueuePrefix + instrumentName.toLowerCase().replaceAll("\\s+", "");
-        }
-
-        // Custom getter that maps defaultResultQueueName to getResultQueueName()
-        public String getResultQueueName() {
-            return defaultResultQueueName;
-        }
-
-        // Note: Lombok @Data generates getDefaultResultQueueName() automatically
-        // but we keep this comment for clarity that it's used in getEffectiveResultQueueName()
-
+        private boolean enabled = false;
         @Override
         public String toString() {
             return "MessagingConfig{" +
-                    "defaultOrderQueuePrefix='" + defaultOrderQueuePrefix + '\'' +
-                    ", defaultResultQueueName='" + defaultResultQueueName + '\'' +
-                    ", exchangeName='" + exchangeName + '\'' +
-                    ", enabled=" + enabled +
+                    "enabled=" + enabled +
                     '}';
         }
     }

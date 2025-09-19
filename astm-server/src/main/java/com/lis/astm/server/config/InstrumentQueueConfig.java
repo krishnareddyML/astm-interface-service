@@ -39,15 +39,16 @@ public class InstrumentQueueConfig {
         log.info("Setting up predefined instrument queues...");
 
         for (AppConfig.InstrumentConfig instrumentConfig : appConfig.getInstruments()) {
+            
             if (instrumentConfig.isEnabled()) {
-                // Set up order queue listener (LIS → Instrument)
-                String orderQueueName = instrumentConfig.getEffectiveOrderQueueName(appConfig.getMessaging());
+                
+                String orderQueueName = instrumentConfig.getOrderQueueName();                
                 setupQueueListener(orderQueueName, instrumentConfig.getName(), "orders");
                 
                 log.info("Configured queues for instrument '{}': orders={}, results={}", 
                            instrumentConfig.getName(), 
                            orderQueueName,
-                           instrumentConfig.getEffectiveResultQueueName(appConfig.getMessaging()));
+                           instrumentConfig.getResultQueueName());
             }
         }
     }

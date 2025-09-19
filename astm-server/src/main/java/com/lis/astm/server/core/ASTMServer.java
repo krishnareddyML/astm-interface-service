@@ -3,6 +3,7 @@ package com.lis.astm.server.core;
 import com.lis.astm.server.config.AppConfig;
 import com.lis.astm.server.driver.InstrumentDriver;
 import com.lis.astm.server.messaging.ResultQueuePublisher;
+import com.lis.astm.server.service.ServerMessageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -38,6 +39,7 @@ public class ASTMServer {
 
     @Autowired private AppConfig appConfig;
     @Autowired private ResultQueuePublisher resultQueuePublisher;
+    @Autowired private ServerMessageService serverMessageService;
 
     // Executors
     private ExecutorService serverExecutor;                 // per-instrument listeners
@@ -216,6 +218,7 @@ public class ASTMServer {
                         driver,
                         instrument,
                         resultQueuePublisher,
+                        serverMessageService,
                         config.getKeepAliveIntervalMinutes(),
                         keepAliveScheduler
                 );

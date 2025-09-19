@@ -40,9 +40,10 @@ public class SimulatorMenu {
         System.out.println("7. Send Message and Keep Connection Open (Keep-Alive Test)");
         System.out.println("8. Test Connection Only");
         System.out.println("9. Configure Server Settings");
+        System.out.println("10. Send ASTM Keep-Alive to Server");
         System.out.println("0. Exit");
         System.out.println(repeatChar('=', 60));
-        System.out.print("Select an option (0-9): ");
+        System.out.print("Select an option (0-10): ");
         
         try {
             return Integer.parseInt(scanner.nextLine().trim());

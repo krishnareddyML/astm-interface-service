@@ -1,6 +1,3 @@
-# Production Environment Configuration
-# This profile is for production deployment with high availability and security
-
 # Production-specific configuration
 lis:
   instruments:
@@ -15,12 +12,37 @@ lis:
   # Production messaging configuration (fully enabled)
   messaging:
     enabled: true  # Enable RabbitMQ for production
+    retry:
+      batch-size: 20
+      max-attempts: 10
+      collision-delay-minutes: 30
+      connection-delay-minutes: 60
+      schedule-interval-ms: 300000  # 5 minutes for production
 
 # Logging configuration  
 log_path: D:/astm-interface-services-data/logs
 
-# Production RabbitMQ Configuration
+# Production Database Configuration
 spring:
+  datasource:
+    url: jdbc:sqlserver://${DB_HOST:prod-sql.internal}:1433;databaseName=ASTM_Interface_Prod;encrypt=true;trustServerCertificate=false
+    username: ${DB_USERNAME}  # Must be provided via environment variables
+    password: ${DB_PASSWORD}  # Must be provided via environment variables
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    hikari:
+      maximum-pool-size: 20
+      connection-timeout: 30000
+      idle-timeout: 300000
+      max-lifetime: 900000
+      leak-detection-threshold: 60000
+  
+  # Enable scheduling for retry processing
+  task:
+    scheduling:
+      pool:
+        size: 5
+
+  # Production RabbitMQ Configuration
   rabbitmq:
     host: ${RABBITMQ_HOST:prod-rabbitmq.internal}  # Production RabbitMQ cluster
     port: ${RABBITMQ_PORT:5672}
@@ -36,15 +58,3 @@ server:
   # Production security headers
   servlet:
     context-path: /astm-interface
-
-# Production Database Configuration (if needed in future)
-# spring:
-#   datasource:
-#     url: ${DATABASE_URL:jdbc:postgresql://prod-db.internal:5432/lis_prod}
-#     username: ${DB_USERNAME}
-#     password: ${DB_PASSWORD}
-#     hikari:
-#       maximum-pool-size: 20
-#       connection-timeout: 30000
-#       idle-timeout: 300000
-#       max-lifetime: 900000

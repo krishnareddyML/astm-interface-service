@@ -3,8 +3,10 @@ package com.lis.astm.server.core;
 import com.lis.astm.model.AstmMessage;
 import com.lis.astm.server.driver.InstrumentDriver;
 import com.lis.astm.server.messaging.ResultQueuePublisher;
+import com.lis.astm.server.model.ServerMessage;
 import com.lis.astm.server.protocol.ASTMProtocolStateMachine;
 import com.lis.astm.server.service.AstmKeepAliveService;
+import com.lis.astm.server.service.ServerMessageService;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
@@ -34,6 +36,7 @@ public class InstrumentConnectionHandler implements Runnable {
     private final InstrumentDriver driver;
     private final String instrumentName;
     private final ResultQueuePublisher resultPublisher;
+    private final ServerMessageService serverMessageService;
     private final ASTMProtocolStateMachine protocolStateMachine;
     private final AstmKeepAliveService keepAliveService;
     
@@ -42,11 +45,13 @@ public class InstrumentConnectionHandler implements Runnable {
 
     public InstrumentConnectionHandler(Socket socket, InstrumentDriver driver, 
                                      String instrumentName, ResultQueuePublisher resultPublisher,
+                                     ServerMessageService serverMessageService,
                                      int keepAliveIntervalMinutes, ScheduledExecutorService scheduler) throws IOException {
         this.socket = socket;
         this.driver = driver;
         this.instrumentName = instrumentName;
         this.resultPublisher = resultPublisher;
+        this.serverMessageService = serverMessageService;
         this.protocolStateMachine = new ASTMProtocolStateMachine(socket, instrumentName);
         
         // Initialize keep-alive service
@@ -150,25 +155,76 @@ public class InstrumentConnectionHandler implements Runnable {
         if (!rawMessage.trim().isEmpty()) {
             log.info("Received ASTM message from {}: {} characters", instrumentName, rawMessage.length());
             
+            // 💾 STEP 1: Save raw message to database FIRST for safety/audit
+            ServerMessage savedMessage = null;
+            try {
+                String messageType = serverMessageService.determineMessageType(rawMessage);
+                savedMessage = serverMessageService.saveIncomingMessage(
+                    rawMessage, instrumentName, getRemoteAddress(), messageType);
+                
+                log.debug("💾 Saved raw message to database: {} (type: {})", 
+                         savedMessage.getMessageId(), messageType);
+                
+            } catch (Exception e) {
+                log.error("❌ Failed to save incoming message to database from {}: {}", 
+                         instrumentName, e.getMessage());
+                // Continue processing even if database save fails
+            }
+            
             // Check if this is a keep-alive message first
             if (keepAliveService != null && keepAliveService.handleIncomingKeepAlive(rawMessage)) {
                 log.debug("Handled incoming keep-alive message from instrument: {}", instrumentName);
+                
+                // Mark as processed in database if we saved it
+                if (savedMessage != null) {
+                    serverMessageService.markAsProcessed(savedMessage.getId(), null);
+                }
                 return true; // Keep-alive processed, continue main loop
             }
             
             try {
-                // Parse the message using the instrument driver
+                // 🔄 STEP 2: Parse the message using the instrument driver
                 AstmMessage parsedMessage = driver.parse(rawMessage);
                 
                 if (parsedMessage != null) {
                     // Set additional metadata
                     parsedMessage.setInstrumentName(instrumentName);
                     
-                    // Publish results to message queue
+                    // Mark as processed in database
+                    if (savedMessage != null) {
+                        serverMessageService.markAsProcessed(savedMessage.getId(), parsedMessage);
+                    }
+                    
+                    // 📤 STEP 3: Publish results to message queue
                     if (parsedMessage.hasResults()) {
-                        resultPublisher.publishResult(parsedMessage);
-                        log.info("Published {} results from {} to message queue", 
-                                   parsedMessage.getResultCount(), instrumentName);
+                        try {
+                            resultPublisher.publishResult(parsedMessage);
+                            log.info("Published {} results from {} to message queue", 
+                                       parsedMessage.getResultCount(), instrumentName);
+                            
+                            // Mark as published in database
+                            if (savedMessage != null) {
+                                serverMessageService.markAsPublished(savedMessage.getId());
+                            }
+                        } catch (Exception publishException) {
+                            log.warn("🔄 Failed to publish results from {} to queue: {} - marking for retry", 
+                                   instrumentName, publishException.getMessage());
+                            
+                            // Check if this is a queue connectivity issue (retry-able)
+                            if (isRetryablePublishingException(publishException)) {
+                                // Mark for retry publishing when queue comes back online
+                                if (savedMessage != null) {
+                                    serverMessageService.markForRetryPublishing(savedMessage.getId(), 
+                                        "Queue publishing failed: " + publishException.getMessage());
+                                }
+                            } else {
+                                // Permanent error - mark as error
+                                if (savedMessage != null) {
+                                    serverMessageService.markAsError(savedMessage.getId(), 
+                                        "Publishing error (permanent): " + publishException.getMessage());
+                                }
+                            }
+                        }
                     }
                     
                     // Handle orders if present (for bidirectional communication)
@@ -176,14 +232,30 @@ public class InstrumentConnectionHandler implements Runnable {
                         log.info("Received {} orders from {}", 
                                    parsedMessage.getOrderCount(), instrumentName);
                         // Orders would typically be handled by a separate queue listener
+                        
+                        // For orders, we'll mark as published immediately since they go to database
+                        if (savedMessage != null) {
+                            serverMessageService.markAsPublished(savedMessage.getId());
+                        }
                     }
                     
                 } else {
                     log.warn("Failed to parse ASTM message from {}", instrumentName);
+                    
+                    // Mark as error in database
+                    if (savedMessage != null) {
+                        serverMessageService.markAsError(savedMessage.getId(), "Failed to parse ASTM message");
+                    }
                 }
                 
             } catch (Exception e) {
                 log.error("Error processing ASTM message from {}: {}", instrumentName, e.getMessage(), e);
+                
+                // Mark as error in database
+                if (savedMessage != null) {
+                    serverMessageService.markAsError(savedMessage.getId(), 
+                        "Processing error: " + e.getMessage());
+                }
                 // Don't re-throw - continue processing other messages
             }
         }
@@ -298,6 +370,53 @@ public class InstrumentConnectionHandler implements Runnable {
         if (currentThread != null && !currentThread.isInterrupted()) {
             currentThread.interrupt();
         }
+    }
+
+    /**
+     * Determine if a publishing exception is retryable (temporary queue issues)
+     * vs permanent errors that should not be retried
+     */
+    private boolean isRetryablePublishingException(Exception exception) {
+        if (exception == null) return false;
+        
+        String message = exception.getMessage();
+        String className = exception.getClass().getSimpleName();
+        
+        // Connection-related exceptions (retryable)
+        if (className.contains("Connection") || 
+            className.contains("Timeout") ||
+            className.contains("Unavailable") ||
+            className.contains("Network") ||
+            (message != null && (
+                message.contains("connection") ||
+                message.contains("timeout") ||
+                message.contains("unavailable") ||
+                message.contains("refused") ||
+                message.contains("unreachable")
+            ))) {
+            return true;
+        }
+        
+        // Authentication/Authorization errors (not retryable)
+        if (className.contains("Auth") || 
+            className.contains("Security") ||
+            (message != null && (
+                message.contains("auth") ||
+                message.contains("unauthorized") ||
+                message.contains("forbidden")
+            ))) {
+            return false;
+        }
+        
+        // Serialization errors (not retryable)
+        if (className.contains("Serialization") ||
+            className.contains("Json") ||
+            className.contains("Parse")) {
+            return false;
+        }
+        
+        // Default: assume retryable for unknown exceptions
+        return true;
     }
 
     /**

@@ -32,7 +32,7 @@ public class SimulatorController {
         this.dataGenerator = new SampleDataGenerator();
         
         // Default server configuration
-        this.serverConfig = new ServerConfig("localhost", 3000, "SIM001");
+        this.serverConfig = new ServerConfig("localhost", 9001, "ORTHO");
         this.protocolHandler = new AstmProtocolHandler(serverConfig.getHost(), serverConfig.getPort());
     }
     
@@ -97,8 +97,11 @@ public class SimulatorController {
                 case 9:
                     configureServer();
                     break;
+                case 10:
+                    sendAstmKeepAliveToServer();
+                    break;
                 default:
-                    menu.displayResult("Invalid Selection", false, "Please select a valid option (0-9)");
+                    menu.displayResult("Invalid Selection", false, "Please select a valid option (0-10)");
             }
         } catch (Exception e) {
             menu.displayError("Operation", e);
@@ -234,7 +237,7 @@ public class SimulatorController {
             }
         };
         
-        protocolHandler.sendMessageAndWait(message, keepAliveHandler);
+            protocolHandler.sendMessageAndWait(message, keepAliveHandler);
         menu.displayResult("Keep-Alive Test", true, "Connection maintained and closed successfully");
     }
     
@@ -257,6 +260,91 @@ public class SimulatorController {
         this.protocolHandler = new AstmProtocolHandler(serverConfig.getHost(), serverConfig.getPort());
         
         menu.displayResult("Server Configuration", true, "Updated to: " + serverConfig);
+    }
+    
+    /**
+     * Send ASTM Keep-Alive message sequence to server (VISION-initiated)
+     */
+    private void sendAstmKeepAliveToServer() throws Exception {
+        // ASTM Keep-Alive message as per 3.4.8.1
+        // VISION: <ENQ>
+        // LIS : <ACK>
+        // VISION: <STX>1H|\^&|||OCD^VISION^5.14.0.47342^JNumber|||||||P|LIS2-A|20220902174004<CR><ETX>21<CR><LF>
+        // LIS : <ACK>
+        // VISION: <STX>2L||<CR><ETX>86<CR><LF>
+        // LIS : <ACK>
+        // VISION: <EOT>
+        
+        String headerRecord = "H|\\^&|||OCD^VISION^5.14.0.47342^JNumber|||||||P|LIS2-A|20220902174004\r";
+        String lRecord = "L||\r";
+        
+        java.net.Socket socket = new java.net.Socket(serverConfig.getHost(), serverConfig.getPort());
+        java.io.OutputStream output = socket.getOutputStream();
+        java.io.InputStream input = socket.getInputStream();
+
+        // Send ENQ
+        output.write(com.lis.astm.simulator.protocol.AstmProtocolConstants.ENQ);
+        output.flush();
+        if (!waitForAck(input, "ENQ")) return;
+
+        // Send H record frame
+        String hFrame = new com.lis.astm.simulator.protocol.AstmFrameBuilder().buildFrame(1, headerRecord, false);
+        output.write(hFrame.getBytes());
+        output.flush();
+        if (!waitForAck(input, "Header Frame")) return;
+
+        // Send L record frame (final)
+        String lFrame = new com.lis.astm.simulator.protocol.AstmFrameBuilder().buildFrame(2, lRecord, true);
+        output.write(lFrame.getBytes());
+        output.flush();
+        if (!waitForAck(input, "L Frame")) return;
+
+        // Send EOT
+        output.write(com.lis.astm.simulator.protocol.AstmProtocolConstants.EOT);
+        output.flush();
+        menu.displayResult("Send ASTM Keep-Alive", true, "Keep-Alive message sequence sent successfully. Connection is now idle and open. Press Ctrl+C to exit or terminate.");
+        System.out.println("\nConnection is now open and idle. Waiting for server messages or manual termination. Press Ctrl+C to exit.");
+        // Keep the connection open indefinitely
+        while (true) {
+            try {
+                if (input.available() > 0) {
+                    int b = input.read();
+                    System.out.println("[SERVER] Received byte: " + b);
+                } else {
+                    Thread.sleep(500);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        // Do not close the socket here; let user terminate manually
+    }
+
+    /**
+     * Wait for ACK from server after sending a control/message
+     */
+    private boolean waitForAck(java.io.InputStream input, String step) throws java.io.IOException {
+        long start = System.currentTimeMillis();
+        int timeout = com.lis.astm.simulator.protocol.AstmProtocolConstants.ENQ_ACK_TIMEOUT;
+        while (System.currentTimeMillis() - start < timeout) {
+            if (input.available() > 0) {
+                int b = input.read();
+                if (b == com.lis.astm.simulator.protocol.AstmProtocolConstants.ACK) {
+                    System.out.println("[ACK] Received for " + step);
+                    return true;
+                } else if (b == com.lis.astm.simulator.protocol.AstmProtocolConstants.NAK) {
+                    System.err.println("[NAK] Received for " + step);
+                    menu.displayResult("Send ASTM Keep-Alive", false, "NAK received for " + step);
+                    return false;
+                }
+            } else {
+                try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            }
+        }
+        System.err.println("[TIMEOUT] No ACK received for " + step);
+        menu.displayResult("Send ASTM Keep-Alive", false, "Timeout waiting for ACK for " + step);
+        return false;
     }
     
     /**
