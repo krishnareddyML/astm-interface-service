@@ -17,14 +17,17 @@ import java.util.Date;
 public class SimpleKeepAliveSimulator {
 
     // ASTM Control Characters
+    private static final byte STX = 0x02;  // Start of Text
+    private static final byte ETX = 0x03;  // End of Text
+    private static final byte EOT = 0x04;  // End of Transmission
     private static final byte ENQ = 0x05;  // Enquiry
     private static final byte ACK = 0x06;  // Acknowledge
     private static final byte NAK = 0x15;  // Negative Acknowledge
-    private static final byte EOT = 0x04;  // End of Transmission
-    private static final byte STX = 0x02;  // Start of Text
-    private static final byte ETX = 0x03;  // End of Text
+    private static final byte ETB = 0x17;  // End of Transmission Block
     private static final byte CR  = 0x0D;  // Carriage Return
     private static final byte LF  = 0x0A;  // Line Feed
+
+    
 
     private final String host;
     private final int port;
@@ -183,7 +186,7 @@ public class SimpleKeepAliveSimulator {
         }
         
         // Terminator (ETX for last frame, ETB for intermediate frames)
-        byte terminator = isLastFrame ? ETX : 0x17; // ETB = 0x17
+        byte terminator = isLastFrame ? ETX : ETB; // ETB = 0x17
         frame.write(terminator);
         
         // Calculate checksum (sequence + data + terminator)

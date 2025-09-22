@@ -1,9 +1,0 @@
-H|\^&|||OrthoVision^Simulator^1.0|||||||P|1394-97|20250808120000
-P|1|PAT001||ALT001|Doe^John^M||19800115|M|||||||||||||||||||||||||||
-O|1|SPEC001||CBC^Complete Blood Count^LOINC|R|20250808120000|20250808115500|||||||||||||||||F
-R|1|WBC^White Blood Cell Count^LOINC|7.5|K/uL|4.0-11.0|N||F|20250808120000|OrthoVision|OP001
-R|2|RBC^Red Blood Cell Count^LOINC|4.2|M/uL|4.0-5.5|N||F|20250808120000|OrthoVision|OP001
-R|3|HGB^Hemoglobin^LOINC|14.1|g/dL|12.0-16.0|N||F|20250808120000|OrthoVision|OP001
-R|4|HCT^Hematocrit^LOINC|42.0|%|36.0-48.0|N||F|20250808120000|OrthoVision|OP001
-R|5|PLT^Platelet Count^LOINC|250|K/uL|150-450|N||F|20250808120000|OrthoVision|OP001
-L|1|N
