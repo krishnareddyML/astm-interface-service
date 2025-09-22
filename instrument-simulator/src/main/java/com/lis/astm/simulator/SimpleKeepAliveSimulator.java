@@ -90,7 +90,7 @@ public class SimpleKeepAliveSimulator {
             String timestamp = DateTimeFormatter.ofPattern("yyyyMMddHHmmss").format(LocalDateTime.now());
             String keepAliveMessage = 
                 "H|\\^&|||OCD^VISION^5.14.0^SimpleSimulator|||||||P|LIS2-A|" + timestamp + "\r" +
-                "L||";
+                "L|1|N||";
             
             log("Sending keep-alive: " + keepAliveMessage.replace("\r", "\\r"));
             

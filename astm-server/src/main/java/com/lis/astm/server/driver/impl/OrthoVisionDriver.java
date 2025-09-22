@@ -203,14 +203,21 @@ public class OrthoVisionDriver implements InstrumentDriver {
         if (fields.length > 9) header.setComments(getFieldValue(fields, 9));
         if (fields.length > 10) header.setProcessingId(getFieldValue(fields, 10));
         if (fields.length > 11) header.setVersionNumber(getFieldValue(fields, 11));
-        if (fields.length > 12) {
+        
+        // Try to parse date/time from field 12 or 13 (different instruments may vary)
+        String dateTimeStr = null;
+        if (fields.length > 13) {
+            dateTimeStr = getFieldValue(fields, 13);
+        }
+        if ((dateTimeStr == null || dateTimeStr.isEmpty()) && fields.length > 12) {
+            dateTimeStr = getFieldValue(fields, 12);
+        }
+        
+        if (dateTimeStr != null && !dateTimeStr.isEmpty()) {
             try {
-                String dateTimeStr = getFieldValue(fields, 12);
-                if (dateTimeStr != null && !dateTimeStr.isEmpty()) {
-                    header.setDateTime(LocalDateTime.parse(dateTimeStr, DATETIME_FORMATTER));
-                }
+                header.setDateTime(LocalDateTime.parse(dateTimeStr, DATETIME_FORMATTER));
             } catch (DateTimeParseException e) {
-                log.warn("Invalid date/time format in header: {}", getFieldValue(fields, 12));
+                log.warn("Invalid date/time format in header: {}", dateTimeStr);
             }
         }
 

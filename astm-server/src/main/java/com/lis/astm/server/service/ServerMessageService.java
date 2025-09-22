@@ -165,18 +165,47 @@ public class ServerMessageService {
             return "UNKNOWN";
         }
         
+        // Split into lines to check for specific record types
+        String[] lines = rawMessage.split("\\r?\\n");
+        boolean hasHeader = false;
+        boolean hasTerminator = false;
+        boolean hasResult = false;
+        boolean hasOrder = false;
+        boolean hasQuery = false;
+        
+        for (String line : lines) {
+            line = line.trim().toUpperCase();
+            if (line.startsWith("H|")) {
+                hasHeader = true;
+            } else if (line.startsWith("L|")) {
+                hasTerminator = true;
+            } else if (line.startsWith("R|")) {
+                hasResult = true;
+            } else if (line.startsWith("O|")) {
+                hasOrder = true;
+            } else if (line.startsWith("Q|")) {
+                hasQuery = true;
+            }
+        }
+        
+        // Check for keep-alive messages first (priority order matters)
+        // Keep-alive messages typically have H| (header) and L| (terminator) only, without results
+        if (hasHeader && hasTerminator && !hasResult && !hasOrder && !hasQuery) {
+            return "KEEP_ALIVE";
+        }
+        
         String upperMessage = rawMessage.toUpperCase();
         
         // Simple heuristics to determine message type
         if (upperMessage.contains("ENQ") || upperMessage.contains("NAK")) {
-            return "KEEPALIVE";
-        } else if (upperMessage.contains("R|") || upperMessage.contains("RESULT")) {
+            return "KEEPALIVE"; // Legacy naming for backward compatibility
+        } else if (hasResult || upperMessage.contains("RESULT")) {
             return "RESULT";
-        } else if (upperMessage.contains("O|") || upperMessage.contains("ORDER")) {
+        } else if (hasOrder || upperMessage.contains("ORDER")) {
             return "ORDER";
-        } else if (upperMessage.contains("Q|") || upperMessage.contains("QUERY")) {
+        } else if (hasQuery || upperMessage.contains("QUERY")) {
             return "QUERY";
-        } else if (upperMessage.contains("H|") && upperMessage.contains("L|")) {
+        } else if (hasHeader && hasTerminator) {
             return "MESSAGE"; // Full ASTM message with header and terminator
         } else {
             return "OTHER";
