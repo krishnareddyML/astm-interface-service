@@ -6,7 +6,6 @@ lis:
       enabled: true
       maxConnections: 10  # Higher connection pool for production
       connectionTimeoutSeconds: 60  # Longer timeout for production stability
-      keepAliveIntervalMinutes: 60  # Keep-alive every hour for production VISION® systems
     
   
   # Production messaging configuration (fully enabled)

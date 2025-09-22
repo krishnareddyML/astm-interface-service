@@ -11,24 +11,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * ASTM Protocol State Machine - Production-Ready Thread-Safe Implementation
+ * ASTM Protocol State Machine - Production-Ready Implementation
  * 
- * Handles the low-level ASTM E1381 protocol communication with intelligent concurrency management.
- * This class is designed to allow keep-alive services to maintain connections during idle periods
- * while ensuring thread safety during active message processing.
+ * Handles the low-level ASTM E1381 protocol communication following standard ASTM practices.
+ * This implementation follows the traditional ASTM pattern where instruments initiate 
+ * communication when they have data to send.
  * 
- * Key Production Features:
- * - Non-blocking idle listening (allows keep-alive during idle periods)
+ * Key Features:
  * - Thread-safe message processing with synchronized methods
- * - Robust timeout handling using socket's built-in READ_TIMEOUT_MS
+ * - Robust timeout handling using socket timeouts
  * - Proper multi-frame message reassembly with newline preservation
  * - Graceful handling of clean disconnects vs. timeouts
  * - Complete protocol state management
- * 
- * CRITICAL FIX (September 2025):
- * - receiveMessage() no longer synchronizes during idle listening
- * - Keep-alive service can now properly maintain connections during idle periods
- * - Synchronization only occurs during actual message processing
+ * - Standard ASTM E1381 compliance
  * 
  * @author Production Refactoring - September 2025
  */
@@ -45,8 +40,6 @@ public class ASTMProtocolStateMachine {
     }
 
     // Protocol timeouts (in milliseconds)
-    // FRAME_TIMEOUT has been REMOVED - we now rely solely on the socket's READ_TIMEOUT_MS
-    // This prevents incorrect disconnection of healthy idle connections
     private static final int ACK_TIMEOUT = 15000; // 15 seconds for ACK response
 
     private final Socket socket;
@@ -66,8 +59,7 @@ public class ASTMProtocolStateMachine {
         this.receivedFrames = new ArrayList<>();
         this.instrumentName = instrumentName;
         
-        // The socket's read timeout is set in ASTMServer.java (READ_TIMEOUT_MS = 360_000ms = 6 minutes)
-        // This is the primary mechanism for handling stale connections and works with keep-alive service
+        // Socket timeout is set in ASTMServer.java for connection management
         log.info("ASTM Protocol State Machine initialized for instrument: {} with socket timeout: {}ms", 
                    instrumentName, socket.getSoTimeout());
     }
@@ -242,23 +234,22 @@ public class ASTMProtocolStateMachine {
     }
 
     /**
-     * CORRECTED: Listen for incoming data without blocking keep-alive service
+     * Listen for incoming data from instruments
      * 
-     * CRITICAL FIX: This method no longer synchronizes during idle listening, allowing
-     * the keep-alive service to send messages during idle periods. It only synchronizes
-     * when actually processing an incoming message from the instrument.
+     * This method implements the standard ASTM pattern where the server waits for
+     * instruments to initiate communication. When an instrument has data to send,
+     * it will send an ENQ to start the message exchange.
      * 
      * Expected behavior:
-     * 1. Instrument sends message → Server processes it
-     * 2. Connection goes idle → Keep-alive service maintains connection
-     * 3. Instrument sends new message when it has results → Server processes it
+     * 1. Instrument sends ENQ when it has results → Server processes the message
+     * 2. Connection may timeout during long idle periods → Server handles gracefully
+     * 3. Instrument reconnects when it has new data → Normal ASTM behavior
      */
     public String receiveMessage() throws IOException {
         log.debug("Listening for incoming data from {}", instrumentName);
 
         while (true) {
             try {
-                // This is NOT synchronized - allows keep-alive to interrupt during idle periods
                 int receivedChar = inputStream.read();
                 
                 if (receivedChar == -1) {
@@ -268,18 +259,18 @@ public class ASTMProtocolStateMachine {
                 }
                 
                 if (receivedChar == ChecksumUtils.ENQ) {
-                    // Instrument wants to send a message - handle it with synchronization
+                    // Instrument wants to send a message
                     log.debug("Received ENQ from {}, starting message reception", instrumentName);
                     return handleIncomingMessageSynchronized();
                 }
                 
-                // For any other character, log and ignore (could be noise, keep-alive response, etc.)
+                // For any other character, log and ignore (could be noise, etc.)
                 log.debug("Received unexpected character '{}' (0x{}) from {}, continuing to listen", 
                          (char)receivedChar, Integer.toHexString(receivedChar), instrumentName);
                 
             } catch (SocketTimeoutException e) {
-                // This is where keep-alive should prevent timeouts on healthy connections
-                log.warn("Socket timeout on {} after {}ms - connection appears stale", 
+                // Socket timeout indicates potential connection issue
+                log.warn("Socket timeout on {} after {}ms - connection may be stale", 
                          instrumentName, socket.getSoTimeout());
                 return null;
             }
@@ -287,10 +278,10 @@ public class ASTMProtocolStateMachine {
     }
 
     /**
-     * THREAD-SAFE: Handle actual message reception after ENQ is received
+     * THREAD-SAFE: Handle message reception after ENQ is received
      * 
-     * This method handles the complete message reception with proper synchronization
-     * but only AFTER an ENQ has been received, so it doesn't block keep-alive during idle.
+     * This method handles the complete message reception with proper synchronization.
+     * Called only after an ENQ has been received from the instrument.
      */
     private synchronized String handleIncomingMessageSynchronized() throws IOException {
         log.debug("Starting synchronized message reception from {}", instrumentName);
@@ -306,7 +297,7 @@ public class ASTMProtocolStateMachine {
         // Loop, receiving frames until the transmission is ended by EOT
         while (true) {
             String frame = receiveFrame();
-            
+            log.info(frame);
             // Check for End of Transmission (EOT)
             if (frame != null && frame.length() > 0 && frame.charAt(0) == ChecksumUtils.EOT) {
                 log.debug("Received EOT from {}, transmission finished", instrumentName);
@@ -367,7 +358,7 @@ public class ASTMProtocolStateMachine {
 
 
     /**
-     * PRODUCTION-READY: Receive a single frame using socket's built-in timeout
+     * PRODUCTION-READY: Receive a single frame using socket timeout
      * 
      * This method handles frame reception with proper timeout management and graceful
      * error handling for both clean disconnects and stale connections.
@@ -407,7 +398,7 @@ public class ASTMProtocolStateMachine {
                     }
                 }
             } catch (SocketTimeoutException e) {
-                // The instrument failed to send a complete frame within READ_TIMEOUT_MS
+                // The instrument failed to send a complete frame within the timeout period
                 log.error("Timeout receiving complete frame from {} after {}ms. Instrument may have stalled.", 
                            instrumentName, socket.getSoTimeout());
                 return null;

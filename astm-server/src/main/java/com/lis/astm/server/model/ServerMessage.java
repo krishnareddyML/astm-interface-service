@@ -21,7 +21,7 @@ public class ServerMessage {
     private String messageId;
     private String instrumentName;
     private String rawMessage;
-    private String messageType; // RESULT, ORDER, QUERY, KEEPALIVE, etc.
+    private String messageType; // RESULT, ORDER, QUERY, MESSAGE, etc.
     private Status status;
     private LocalDateTime receivedAt;
     private LocalDateTime processedAt;

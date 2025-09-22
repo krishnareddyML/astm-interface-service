@@ -4,7 +4,6 @@ lis:
     - name: OrthoVision
       port: 9001
       enabled: true  # Enable for development testing
-      keepAliveIntervalMinutes: 30  # Keep-alive every 30 minutes for development
       driverClassName: com.lis.astm.server.driver.impl.OrthoVisionDriver
     
   

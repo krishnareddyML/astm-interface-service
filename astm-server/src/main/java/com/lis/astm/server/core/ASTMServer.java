@@ -31,10 +31,8 @@ public class ASTMServer {
 
     // Network defaults (can be moved to AppConfig later)
     private static final int ACCEPT_TIMEOUT_MS = 1_000;     // accept() wake interval
-    //private static final int READ_TIMEOUT_MS   = 30_000;    // per-connection read() timeout
-    private static final int READ_TIMEOUT_MS   = 360_000; // increasing 6 min, that said greater that Keep Live ping interval 5 min
+    private static final int READ_TIMEOUT_MS   = 300_000;   // 5 minutes read timeout
     private static final int BIND_BACKLOG      = 128;       // pending connection queue
-    private static final int SCHEDULER_THREADS = 4;         // keep-alive / timers
     private static final int AWAIT_SEC         = 30;        // shutdown wait
 
     @Autowired private AppConfig appConfig;
@@ -44,7 +42,6 @@ public class ASTMServer {
     // Executors
     private ExecutorService serverExecutor;                 // per-instrument listeners
     private ExecutorService connectionExecutor;             // per-connection handlers
-    private ScheduledExecutorService keepAliveScheduler;    // periodic jobs/keep-alives
 
     // State
     private final ConcurrentHashMap<String, ServerSocket> serverSockets = new ConcurrentHashMap<>();
@@ -53,7 +50,6 @@ public class ASTMServer {
 
     private final AtomicInteger serverThreadIdx = new AtomicInteger();
     private final AtomicInteger connThreadIdx   = new AtomicInteger();
-    private final AtomicInteger schedThreadIdx  = new AtomicInteger();
 
     private volatile boolean running = false;
 
@@ -91,11 +87,6 @@ public class ASTMServer {
                 new LinkedBlockingQueue<>(1024),
                 r -> namedThread(r, "ASTM-Conn-", connThreadIdx.getAndIncrement()),
                 new ThreadPoolExecutor.CallerRunsPolicy()
-        );
-
-        keepAliveScheduler = Executors.newScheduledThreadPool(
-                SCHEDULER_THREADS,
-                r -> namedThread(r, "ASTM-KeepAlive-", schedThreadIdx.getAndIncrement())
         );
 
         running = true;
@@ -140,7 +131,6 @@ public class ASTMServer {
         // Shutdown executors and await termination
         shutdownAndAwait(serverExecutor, "serverExecutor");
         shutdownAndAwait(connectionExecutor, "connectionExecutor");
-        shutdownAndAwait(keepAliveScheduler, "keepAliveScheduler");
 
         log.info("ASTM Interface Server stopped.");
     }
@@ -184,7 +174,7 @@ public class ASTMServer {
                 // Basic socket tuning (can be moved to handler ctor if preferred)
                 try {
                     clientSocket.setTcpNoDelay(true);
-                    clientSocket.setKeepAlive(true);
+                    clientSocket.setKeepAlive(true); // TCP keep-alive
                     clientSocket.setSoTimeout(READ_TIMEOUT_MS);
                 } catch (Exception sox) {
                     log.warn("Unable to set socket options for {}: {}", instrument, sox.toString(), sox);
@@ -218,9 +208,7 @@ public class ASTMServer {
                         driver,
                         instrument,
                         resultQueuePublisher,
-                        serverMessageService,
-                        config.getKeepAliveIntervalMinutes(),
-                        keepAliveScheduler
+                        serverMessageService
                 );
 
                 // Track and execute

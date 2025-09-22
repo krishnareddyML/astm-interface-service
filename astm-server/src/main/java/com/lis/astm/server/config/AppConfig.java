@@ -29,16 +29,11 @@ public class AppConfig {
         private boolean enabled = true;
         private int maxConnections = 5;
         private int connectionTimeoutSeconds = 30;
-        private int keepAliveIntervalMinutes = 0; // 0 = disabled, 1-1440 = enabled
         
         // Queue names bound to instrument level
         private String orderQueueName;     // Inbound orders queue (LIS → Instrument)
         private String resultQueueName;    // Outbound results queue (Instrument → LIS)
         private String exchangeName;       // Optional exchange name for routing
-
-        public boolean isKeepAliveEnabled() {
-            return keepAliveIntervalMinutes > 0 && keepAliveIntervalMinutes <= 1440;
-        }
 
         
         @Override
@@ -50,7 +45,6 @@ public class AppConfig {
                     ", enabled=" + enabled +
                     ", maxConnections=" + maxConnections +
                     ", connectionTimeoutSeconds=" + connectionTimeoutSeconds +
-                    ", keepAliveIntervalMinutes=" + keepAliveIntervalMinutes +
                     ", orderQueueName='" + orderQueueName + '\'' +
                     ", resultQueueName='" + resultQueueName + '\'' +
                     ", exchangeName='" + exchangeName + '\'' +

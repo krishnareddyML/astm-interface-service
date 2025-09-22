@@ -5,26 +5,24 @@ import com.lis.astm.server.driver.InstrumentDriver;
 import com.lis.astm.server.messaging.ResultQueuePublisher;
 import com.lis.astm.server.model.ServerMessage;
 import com.lis.astm.server.protocol.ASTMProtocolStateMachine;
-import com.lis.astm.server.service.AstmKeepAliveService;
 import com.lis.astm.server.service.ServerMessageService;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
-import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * Production-Ready Instrument Connection Handler
  * 
  * Handles a single instrument connection in an isolated thread with robust error handling
  * and graceful termination. This refactored version fixes the infinite loop issue and
- * provides proper coordination with the keep-alive service.
+ * provides proper ASTM protocol handling.
  * 
  * Key Production Features:
  * - Graceful loop termination when receiveMessage() returns null
  * - Proper handling of clean disconnects vs. timeouts
- * - Thread-safe coordination with AstmKeepAliveService
+ * - Thread-safe protocol state machine
  * - Comprehensive error handling and fault isolation
  * 
  * @author Production Refactoring - September 2025
@@ -38,15 +36,13 @@ public class InstrumentConnectionHandler implements Runnable {
     private final ResultQueuePublisher resultPublisher;
     private final ServerMessageService serverMessageService;
     private final ASTMProtocolStateMachine protocolStateMachine;
-    private final AstmKeepAliveService keepAliveService;
     
     private volatile boolean running = true;
     private volatile boolean connected = false;
 
     public InstrumentConnectionHandler(Socket socket, InstrumentDriver driver, 
                                      String instrumentName, ResultQueuePublisher resultPublisher,
-                                     ServerMessageService serverMessageService,
-                                     int keepAliveIntervalMinutes, ScheduledExecutorService scheduler) throws IOException {
+                                     ServerMessageService serverMessageService) throws IOException {
         this.socket = socket;
         this.driver = driver;
         this.instrumentName = instrumentName;
@@ -54,16 +50,8 @@ public class InstrumentConnectionHandler implements Runnable {
         this.serverMessageService = serverMessageService;
         this.protocolStateMachine = new ASTMProtocolStateMachine(socket, instrumentName);
         
-        // Initialize keep-alive service
-        if (keepAliveIntervalMinutes > 0 && keepAliveIntervalMinutes <= 1440) {
-            this.keepAliveService = new AstmKeepAliveService(instrumentName, keepAliveIntervalMinutes, 
-                                                           protocolStateMachine, scheduler);
-        } else {
-            this.keepAliveService = null;
-        }
-        
-        log.info("Created connection handler for instrument: {} from {} (keep-alive: {} minutes)", 
-                   instrumentName, socket.getRemoteSocketAddress(), keepAliveIntervalMinutes);
+        log.info("Created connection handler for instrument: {} from {}", 
+                   instrumentName, socket.getRemoteSocketAddress());
     }
 
     @Override
@@ -73,13 +61,6 @@ public class InstrumentConnectionHandler implements Runnable {
         
         try {
             connected = true;
-            
-            // Start keep-alive service if configured
-            if (keepAliveService != null) {
-                keepAliveService.start();
-                log.info("Keep-alive service started for instrument: {} ({} minute intervals)", 
-                           instrumentName, keepAliveService.getStats().intervalMinutes);
-            }
             
             // Main connection loop with graceful termination
             while (running && socket.isConnected() && !socket.isClosed()) {
@@ -97,7 +78,7 @@ public class InstrumentConnectionHandler implements Runnable {
                     
                 } catch (SocketTimeoutException e) {
                     // Normal timeout during read operations - continue listening
-                    // The socket timeout (6 minutes) combined with keep-alive prevents stale connections
+                    // The socket timeout (5 minutes) prevents stale connections
                     log.debug("Socket timeout in main loop for {} - this is normal behavior", instrumentName);
                     continue;
                     
@@ -159,6 +140,13 @@ public class InstrumentConnectionHandler implements Runnable {
             ServerMessage savedMessage = null;
             try {
                 String messageType = serverMessageService.determineMessageType(rawMessage);
+                log.info("Message type detected: {} for message: {}", messageType, rawMessage.replaceAll("\\r", "\\\\r").replaceAll("\\n", "\\\\n"));
+                
+                if ("KEEP_ALIVE".equals(messageType)) {
+                    log.info("incoming is keepAlive - message from {}", instrumentName);
+                    return true; // Skip database save for keep-alive messages
+                }
+                
                 savedMessage = serverMessageService.saveIncomingMessage(
                     rawMessage, instrumentName, getRemoteAddress(), messageType);
                 
@@ -169,17 +157,6 @@ public class InstrumentConnectionHandler implements Runnable {
                 log.error("❌ Failed to save incoming message to database from {}: {}", 
                          instrumentName, e.getMessage());
                 // Continue processing even if database save fails
-            }
-            
-            // Check if this is a keep-alive message first
-            if (keepAliveService != null && keepAliveService.handleIncomingKeepAlive(rawMessage)) {
-                log.debug("Handled incoming keep-alive message from instrument: {}", instrumentName);
-                
-                // Mark as processed in database if we saved it
-                if (savedMessage != null) {
-                    serverMessageService.markAsProcessed(savedMessage.getId(), null);
-                }
-                return true; // Keep-alive processed, continue main loop
             }
             
             try {
@@ -427,16 +404,6 @@ public class InstrumentConnectionHandler implements Runnable {
         
         connected = false;
         running = false;
-        
-        // Stop keep-alive service first
-        if (keepAliveService != null) {
-            try {
-                keepAliveService.stop();
-                log.debug("Keep-alive service stopped for {}", instrumentName);
-            } catch (Exception e) {
-                log.error("Error stopping keep-alive service for {}: {}", instrumentName, e.getMessage());
-            }
-        }
         
         // Close protocol state machine
         try {
