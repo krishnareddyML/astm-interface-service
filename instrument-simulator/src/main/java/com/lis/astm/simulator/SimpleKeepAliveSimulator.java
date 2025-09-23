@@ -35,6 +35,7 @@ public class SimpleKeepAliveSimulator {
     private InputStream inputStream;
     private OutputStream outputStream;
     private volatile boolean running = true;
+    private int currentFrameNumber = 1; // Frame sequence tracker (same as server)
 
     public SimpleKeepAliveSimulator(String host, int port) {
         this.host = host;
@@ -127,7 +128,8 @@ public class SimpleKeepAliveSimulator {
             for (int i = 0; i < records.length; i++) {
                 String record = records[i];
                 boolean isLastFrame = (i == records.length - 1);
-                int frameSequence = (i % 7) + 1; // Frame sequence 1-7
+                // ASTM sequence: 1,2,3,4,5,6,7,0,1,2,3,4,5,6,7,0... (same as server logic)
+                int frameSequence = currentFrameNumber;
                 
                 log("Record " + (i+1) + ": " + record);
                 
@@ -141,6 +143,12 @@ public class SimpleKeepAliveSimulator {
                 
                 if (response == ACK) {
                     log("← ACK");
+                    
+                    // Update frame number for next frame (same logic as server)
+                    currentFrameNumber++;
+                    if (currentFrameNumber > 7) {
+                        currentFrameNumber = 0; // Wrap around after 7
+                    }
                 } else if (response == NAK) {
                     log("← NAK (frame rejected)");
                     return;

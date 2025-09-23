@@ -13,7 +13,7 @@ lis:
       
   # Local messaging configuration (disabled for local development)
   messaging:
-    enabled: false  # Enable for testing database-backed order processing
+    enabled: true  # Enable for testing database-backed order processing
     retry:
       batch-size: 5
       max-attempts: 3

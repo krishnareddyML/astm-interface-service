@@ -18,7 +18,7 @@ import java.util.List;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "astm.messaging.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "lis.messaging.enabled", havingValue = "true")
 public class ServerMessageRetryService {
     
     private final ServerMessageService serverMessageService;
