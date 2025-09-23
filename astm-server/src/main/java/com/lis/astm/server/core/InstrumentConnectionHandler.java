@@ -172,11 +172,11 @@ public class InstrumentConnectionHandler implements Runnable {
                         serverMessageService.markAsProcessed(savedMessage.getId(), parsedMessage);
                     }
                     
-                    // 📤 STEP 3: Publish results to message queue
-                    if (parsedMessage.hasResults()) {
+                    // 📤 STEP 3: Publish results to message queue only if result message Types
+                    if (parsedMessage.hasResults() || parsedMessage.getMessageType().equals("QUERY")) {
                         try {
                             resultPublisher.publishResult(parsedMessage);
-                            log.info("Published {} results from {} to message queue", 
+                            log.info("Published {} results/query from {} to message queue", 
                                        parsedMessage.getResultCount(), instrumentName);
                             
                             // Mark as published in database

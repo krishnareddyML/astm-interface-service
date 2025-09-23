@@ -60,12 +60,16 @@ public class ResultQueuePublisher {
 
             // Get instrument-specific result queue name
             String queueName = instrumentConfig.getResultQueueName();
+            String resultRoutingKey = instrumentConfig.getResultsRoutingKey();
             String exchangeName = instrumentConfig.getExchangeName();
 
             // Publish to queue`
-            if (exchangeName != null && !exchangeName.trim().isEmpty()) {
+            if (exchangeName != null && !exchangeName.trim().isEmpty() && resultRoutingKey != null && !resultRoutingKey.trim().isEmpty()) {
                 // Use exchange-based routing
-                rabbitTemplate.convertAndSend(exchangeName, queueName, messageJson, message -> {
+                try
+                {
+                    
+                rabbitTemplate.convertAndSend(exchangeName, resultRoutingKey, messageJson, message -> {
                     // Add custom headers
                     message.getMessageProperties().setHeader("instrumentName", astmMessage.getInstrumentName());
                     message.getMessageProperties().setHeader("messageType", astmMessage.getMessageType());
@@ -74,7 +78,12 @@ public class ResultQueuePublisher {
                     message.getMessageProperties().setHeader("timestamp", System.currentTimeMillis());
                     return message;
                 });
-            } else {
+            }catch(Exception ex){
+                log.error("Error publishing to exchange {} with routing key {}: {}", exchangeName, resultRoutingKey, ex.getMessage());
+                throw ex;
+            }
+         } else
+             {
                 // Direct queue publishing
                 rabbitTemplate.convertAndSend(queueName, messageJson, message -> {
                     // Add custom headers

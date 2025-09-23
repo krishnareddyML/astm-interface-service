@@ -34,6 +34,7 @@ public class AppConfig {
         private String orderQueueName;     // Inbound orders queue (LIS → Instrument)
         private String resultQueueName;    // Outbound results queue (Instrument → LIS)
         private String exchangeName;       // Optional exchange name for routing
+        private String resultsRoutingKey;  // Routing key for results messages
 
         
         @Override
@@ -48,6 +49,7 @@ public class AppConfig {
                     ", orderQueueName='" + orderQueueName + '\'' +
                     ", resultQueueName='" + resultQueueName + '\'' +
                     ", exchangeName='" + exchangeName + '\'' +
+                    ", resultsRoutingKey='" + resultsRoutingKey + '\'' +
                     '}';
         }
 

@@ -9,6 +9,7 @@ lis:
       connectionTimeoutSeconds: 30  # Connection timeout for local testing
       orderQueueName: ortho-vision.orders.queue
       resultQueueName: ortho-vision.results.queue
+      resultsRoutingKey: result.inbound	
       exchangeName: ortho-vision-exchange
       
   # Local messaging configuration (disabled for local development)
