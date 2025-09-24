@@ -659,38 +659,48 @@ public class AstmParserSwingApp {
     }
     
     private static String[] getComponentNames(String fieldNumber, String javaFieldName) {
-        // Return component names based on ASTM field specification
+        // Return component names based on ORTHO VISION® ASTM E1394 specification
         switch (fieldNumber) {
+            // Header Record Components
+            case "H.2": // Field Delimiters: "|\^&"
+                return new String[]{"Field Delimiter (|)", "Repeat Delimiter (\\)", "Component Delimiter (^)", "Escape Delimiter (&)"};
+            case "H.5": // Sender Name/ID
+                return new String[]{"Manufacturer Name (OCD)", "Product Name (VISION)", "Software Version", "Instrument ID"};
+                
             // Patient Record Components
-            case "P.5": // Patient ID Alternate
-                return new String[]{"National ID", "Medical Record ID", "Other ID"};
+            case "P.5": // Additional Patient IDs
+                return new String[]{"National ID", "Medical Record", "Other ID"};
             case "P.6": // Patient Name
-                return new String[]{"Last Name", "First Name", "Middle Name", "Suffix", "Title"};
-            case "P.14": // Attending Physician ID
-                return new String[]{"Physician ID", "Last Name", "First Name", "Middle Name"};
+                return new String[]{"Last Name", "First Name", "Middle Initial", "Suffix", "Title"};
+            case "P.14": // Attending Physician (single physician allowed)
+                return new String[]{"Physician ID", "Last Name", "First Name", "Middle Initial"};
                 
             // Order Record Components  
-            case "O.4": // Universal Test ID
-            case "R.3": // Universal Test ID (Result)
-            case "Q.5": // Universal Test ID (Query)
-                return new String[]{"Test Code", "Test Name", "Test System", "Version"};
+            case "O.5": // Universal Test ID (complex field with multiple subcomponents)
+                return new String[]{"Profile Name", "Number of Donor Samples", "1st Donor Specimen ID", "Sample Type of 1st Donor", 
+                                  "Number of Card Lots", "1st Card ID", "1st Card Lot ID", "Number of Reagent Lots", 
+                                  "1st Reagent ID", "1st Reagent Lot ID"};
+            case "O.14": // Relevant Clinical Info - Expected Test Results
+                return new String[]{"Test Name", "Expected Result"};
+                
+            // Query Record Components
+            case "Q.3": // Starting Range ID Number
+                return new String[]{"Computer System Patient ID", "Computer System Sample ID"};
                 
             // Result Record Components
-            case "R.6": // Reference Ranges
-                return new String[]{"Normal Range", "Alert Range", "Panic Range"};
-            case "R.11": // Operator Identification
-                return new String[]{"Operator ID", "Operator Name", "Access Level"};
-                
-            // Header Record Components
-            case "H.2": // Delimiter Definition
-                return new String[]{"Component Sep", "Repeat Sep", "Escape Char", "Subcomponent Sep"};
-            case "H.5": // Sender Name
-            case "H.10": // Receiver Name
-                return new String[]{"Institution Name", "Department", "Contact Person"};
+            case "R.3": // Test ID
+                return new String[]{"Analysis", "Donor Specimen ID"};
+            case "R.11": // Operator Identification (conditional based on Include Operator setting)
+                return new String[]{"Instrument Operator", "Verifier"};
                 
             // M-Result Record Components
-            case "M.5": // Reagent Information
-                return new String[]{"Reagent Lot", "Expiration Date", "Reagent ID"};
+            case "M.4": // Card Information
+                return new String[]{"Type of Card", "Number of the Well (1-6)", "Card ID Number", "Card Lot Number", 
+                                  "Card Expiration Date", "Mono Image File Name", "Color Image File Name"};
+            case "M.5": // Reagent Information (repeating group)
+                return new String[]{"Reagent Name", "Reagent Lot Number", "Reagent Expiration Date"};
+            case "M.6": // Result Details
+                return new String[]{"Final Result or Error", "Manual Correction Flag (M/A)", "Read Result or Error", "Operator ID"};
                 
             // Default for unknown fields
             default:
