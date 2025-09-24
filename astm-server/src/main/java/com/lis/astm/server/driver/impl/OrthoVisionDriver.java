@@ -108,6 +108,24 @@ public class OrthoVisionDriver implements InstrumentDriver {
             }
         }
 
+        // Build Query Records
+        if (message.getQueryRecords() != null) {
+            int sequenceNumber = 1;
+            for (QueryRecord query : message.getQueryRecords()) {
+                query.setSequenceNumber(sequenceNumber++);
+                messageBuilder.append(buildQueryRecord(query)).append("\r\n");
+            }
+        }
+
+        // Build MResult Records
+        if (message.getMResultRecords() != null) {
+            int sequenceNumber = 1;
+            for (MResultRecord mResult : message.getMResultRecords()) {
+                mResult.setSequenceNumber(sequenceNumber++);
+                messageBuilder.append(buildMResultRecord(mResult)).append("\r\n");
+            }
+        }
+
         // Build Terminator Record
         if (message.getTerminatorRecord() != null) {
             messageBuilder.append(buildTerminatorRecord(message.getTerminatorRecord())).append("\r\n");
@@ -178,8 +196,14 @@ public class OrthoVisionDriver implements InstrumentDriver {
             case "O":
                 astmMessage.addOrderRecord(parseOrderRecord(fields));
                 break;
+            case "Q":
+                astmMessage.addQueryRecord(parseQueryRecord(fields));
+                break;
             case "R":
                 astmMessage.addResultRecord(parseResultRecord(fields));
+                break;
+            case "M":
+                astmMessage.addMResultRecord(parseMResultRecord(fields));
                 break;
             case "L":
                 astmMessage.setTerminatorRecord(parseTerminatorRecord(fields));
@@ -349,6 +373,62 @@ public class OrthoVisionDriver implements InstrumentDriver {
         return result;
     }
 
+    private QueryRecord parseQueryRecord(String[] fields) {
+        QueryRecord query = new QueryRecord();
+        
+        if (fields.length > 1) {
+            try {
+                query.setSequenceNumber(Integer.parseInt(getFieldValue(fields, 1)));
+            } catch (NumberFormatException e) {
+                log.warn("Invalid sequence number in query record: {}", getFieldValue(fields, 1));
+            }
+        }
+        if (fields.length > 2) query.setStartingRangeId(getFieldValue(fields, 2));
+        if (fields.length > 3) query.setEndingRangeId(getFieldValue(fields, 3));
+        if (fields.length > 4) query.setUniversalTestId(getFieldValue(fields, 4));
+        if (fields.length > 5) query.setNatureOfRequestTimeLimits(getFieldValue(fields, 5));
+        if (fields.length > 6) query.setBeginningRequestResultsDateTime(getFieldValue(fields, 6));
+        if (fields.length > 7) query.setEndingRequestResultsDateTime(getFieldValue(fields, 7));
+        if (fields.length > 8) query.setRequestingPhysicianName(getFieldValue(fields, 8));
+        if (fields.length > 9) query.setRequestingPhysicianPhoneNumber(getFieldValue(fields, 9));
+        if (fields.length > 10) query.setUserField1(getFieldValue(fields, 10));
+        if (fields.length > 11) query.setUserField2(getFieldValue(fields, 11));
+        if (fields.length > 12) query.setRequestInformationStatusCodes(getFieldValue(fields, 12));
+
+        return query;
+    }
+
+    private MResultRecord parseMResultRecord(String[] fields) {
+        MResultRecord mResult = new MResultRecord();
+        
+        if (fields.length > 1) {
+            try {
+                mResult.setSequenceNumber(Integer.parseInt(getFieldValue(fields, 1)));
+            } catch (NumberFormatException e) {
+                log.warn("Invalid sequence number in M-result record: {}", getFieldValue(fields, 1));
+            }
+        }
+        if (fields.length > 2) mResult.setResultWellName(getFieldValue(fields, 2));
+        if (fields.length > 3) mResult.setTypeOfCard(getFieldValue(fields, 3));
+        
+        // Parse reagent information if present (field 4 can contain multiple reagent entries)
+        if (fields.length > 4) {
+            String reagentField = getFieldValue(fields, 4);
+            if (reagentField != null && !reagentField.isEmpty()) {
+                // Reagent info format: name^lot^expiration
+                String[] reagentParts = reagentField.split("\\^", 3);
+                if (reagentParts.length >= 3) {
+                    mResult.addReagentInfo(reagentParts[0], reagentParts[1], reagentParts[2]);
+                }
+            }
+        }
+        
+        if (fields.length > 5) mResult.setResultInformation(getFieldValue(fields, 5));
+        if (fields.length > 6) mResult.setTestName(getFieldValue(fields, 6));
+
+        return mResult;
+    }
+
     private TerminatorRecord parseTerminatorRecord(String[] fields) {
         TerminatorRecord terminator = new TerminatorRecord();
         
@@ -431,6 +511,49 @@ public class OrthoVisionDriver implements InstrumentDriver {
         return sb.toString();
     }
 
+    private String buildQueryRecord(QueryRecord query) {
+        StringBuilder sb = new StringBuilder("Q");
+        sb.append(FIELD_DELIMITER).append(query.getSequenceNumber() != null ? query.getSequenceNumber() : "");
+        sb.append(FIELD_DELIMITER).append(query.getStartingRangeId() != null ? query.getStartingRangeId() : "");
+        sb.append(FIELD_DELIMITER).append(query.getEndingRangeId() != null ? query.getEndingRangeId() : "");
+        sb.append(FIELD_DELIMITER).append(query.getUniversalTestId() != null ? query.getUniversalTestId() : "");
+        sb.append(FIELD_DELIMITER).append(query.getNatureOfRequestTimeLimits() != null ? query.getNatureOfRequestTimeLimits() : "");
+        sb.append(FIELD_DELIMITER).append(query.getBeginningRequestResultsDateTime() != null ? query.getBeginningRequestResultsDateTime() : "");
+        sb.append(FIELD_DELIMITER).append(query.getEndingRequestResultsDateTime() != null ? query.getEndingRequestResultsDateTime() : "");
+        sb.append(FIELD_DELIMITER).append(query.getRequestingPhysicianName() != null ? query.getRequestingPhysicianName() : "");
+        sb.append(FIELD_DELIMITER).append(query.getRequestingPhysicianPhoneNumber() != null ? query.getRequestingPhysicianPhoneNumber() : "");
+        sb.append(FIELD_DELIMITER).append(query.getUserField1() != null ? query.getUserField1() : "");
+        sb.append(FIELD_DELIMITER).append(query.getUserField2() != null ? query.getUserField2() : "");
+        sb.append(FIELD_DELIMITER).append(query.getRequestInformationStatusCodes() != null ? query.getRequestInformationStatusCodes() : "");
+        return sb.toString();
+    }
+
+    private String buildMResultRecord(MResultRecord mResult) {
+        StringBuilder sb = new StringBuilder("M");
+        sb.append(FIELD_DELIMITER).append(mResult.getSequenceNumber() != null ? mResult.getSequenceNumber() : "");
+        sb.append(FIELD_DELIMITER).append(mResult.getResultWellName() != null ? mResult.getResultWellName() : "");
+        sb.append(FIELD_DELIMITER).append(mResult.getTypeOfCard() != null ? mResult.getTypeOfCard() : "");
+        
+        // Build reagent information field (repeating field)
+        if (mResult.getReagentInformation() != null && !mResult.getReagentInformation().isEmpty()) {
+            StringBuilder reagentField = new StringBuilder();
+            for (int i = 0; i < mResult.getReagentInformation().size(); i++) {
+                MResultRecord.ReagentInfo reagent = mResult.getReagentInformation().get(i);
+                if (i > 0) reagentField.append("&"); // Repeat delimiter for multiple reagents
+                reagentField.append(reagent.getReagentName() != null ? reagent.getReagentName() : "");
+                reagentField.append("^").append(reagent.getReagentLotNumber() != null ? reagent.getReagentLotNumber() : "");
+                reagentField.append("^").append(reagent.getReagentExpirationDate() != null ? reagent.getReagentExpirationDate() : "");
+            }
+            sb.append(FIELD_DELIMITER).append(reagentField.toString());
+        } else {
+            sb.append(FIELD_DELIMITER);
+        }
+        
+        sb.append(FIELD_DELIMITER).append(mResult.getResultInformation() != null ? mResult.getResultInformation() : "");
+        sb.append(FIELD_DELIMITER).append(mResult.getTestName() != null ? mResult.getTestName() : "");
+        return sb.toString();
+    }
+
     private String buildTerminatorRecord(TerminatorRecord terminator) {
         StringBuilder sb = new StringBuilder("L");
         sb.append(FIELD_DELIMITER).append(terminator.getSequenceNumber() != null ? terminator.getSequenceNumber() : "1");
@@ -443,10 +566,12 @@ public class OrthoVisionDriver implements InstrumentDriver {
     }
 
     private void determineMessageType(AstmMessage astmMessage) {
-        if (astmMessage.hasResults()) {
+        if (astmMessage.hasResults() || astmMessage.hasMResults()) {
             astmMessage.setMessageType("RESULT");
         } else if (astmMessage.hasOrders()) {
             astmMessage.setMessageType("ORDER");
+        } else if (astmMessage.hasQueries()) {
+            astmMessage.setMessageType("QUERY");
         } else {
             astmMessage.setMessageType("QUERY");
         }

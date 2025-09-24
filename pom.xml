@@ -25,6 +25,7 @@
         <module>astm-model</module>
         <module>astm-server</module>
         <module>instrument-simulator</module>
+        <module>astm-parser-swing</module>
     </modules>
 
     <dependencyManagement>
