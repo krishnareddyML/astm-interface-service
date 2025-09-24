@@ -205,25 +205,37 @@ public class ASTMProtocolStateMachine {
             return false;
         }
 
-        // Break message into frames (max ~240 characters per frame to be safe)
+        // ASTM E1394 Compliant: Process records individually
         final int MAX_FRAME_SIZE = 240;
-        List<String> frames = new ArrayList<>();
+        String[] records = message.split("\\r\\n|\\r|\\n");
         
-        int start = 0;
-        while (start < message.length()) {
-            int end = Math.min(start + MAX_FRAME_SIZE, message.length());
-            frames.add(message.substring(start, end));
-            start = end;
-        }
-
-        // Send all frames
         currentFrameNumber = 1;
-        for (int i = 0; i < frames.size(); i++) {
-            boolean isLastFrame = (i == frames.size() - 1);
-            if (!sendFrame(frames.get(i), isLastFrame)) {
-                log.error("Failed to send frame {} to {}", i + 1, instrumentName);
-                sendEot(); // Send EOT to clean up
-                return false;
+        for (String record : records) {
+            if (record.trim().isEmpty()) continue;
+            
+            // Check if record fits in single frame
+            if (record.length() <= MAX_FRAME_SIZE) {
+                // Complete record fits in one frame - use ETX
+                if (!sendFrame(record, true)) { // isLastFrame=true means use ETX
+                    log.error("Failed to send complete record to {}", instrumentName);
+                    sendEot(); // Send EOT to clean up
+                    return false;
+                }
+            } else {
+                // Large record needs splitting across frames - use ETB for intermediate, ETX for last
+                int start = 0;
+                while (start < record.length()) {
+                    int end = Math.min(start + MAX_FRAME_SIZE, record.length());
+                    String frameData = record.substring(start, end);
+                    boolean isLastFrameOfRecord = (end >= record.length());
+                    
+                    if (!sendFrame(frameData, isLastFrameOfRecord)) {
+                        log.error("Failed to send frame part to {}", instrumentName);
+                        sendEot(); // Send EOT to clean up
+                        return false;
+                    }
+                    start = end;
+                }
             }
         }
 
@@ -297,7 +309,7 @@ public class ASTMProtocolStateMachine {
         // Loop, receiving frames until the transmission is ended by EOT
         while (true) {
             String frame = receiveFrame();
-            log.info(frame);
+            //log.info(frame);
             // Check for End of Transmission (EOT)
             if (frame != null && frame.length() > 0 && frame.charAt(0) == ChecksumUtils.EOT) {
                 log.debug("Received EOT from {}, transmission finished", instrumentName);

@@ -101,15 +101,57 @@ public class AdvancedAstmSimulator {
     }
 
     private void loadTemplateFromFile(String filename, String templateKey) {
-        try {
-            File file = new File("src/main/resources/test-messages/" + filename);
-            if (file.exists()) {
-                String content = new String(java.nio.file.Files.readAllBytes(file.toPath()));
-                messageTemplates.put(templateKey, content);
-                log("Loaded template from file: " + filename);
+        String content = null;
+        
+        // Try multiple approaches to load the file
+        
+        // 1. Try loading from classpath resources first
+        try (InputStream is = getClass().getClassLoader().getResourceAsStream("test-messages/" + filename)) {
+            if (is != null) {
+                // Read all bytes from InputStream
+                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                int nRead;
+                byte[] data = new byte[1024];
+                while ((nRead = is.read(data, 0, data.length)) != -1) {
+                    buffer.write(data, 0, nRead);
+                }
+                buffer.flush();
+                content = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+                log("Loaded template from classpath resource: " + filename);
             }
         } catch (Exception e) {
-            log("Could not load template file " + filename + ": " + e.getMessage());
+            log("Could not load from classpath: " + filename + " - " + e.getMessage());
+        }
+        
+        // 2. If not found in classpath, try different file system paths
+        if (content == null) {
+            String[] possiblePaths = {
+                "src/main/resources/test-messages/" + filename,
+                "instrument-simulator/src/main/resources/test-messages/" + filename,
+                "test-messages/" + filename,
+                filename
+            };
+            
+            for (String path : possiblePaths) {
+                try {
+                    File file = new File(path);
+                    if (file.exists()) {
+                        content = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+                        log("Loaded template from file: " + path);
+                        break;
+                    }
+                } catch (Exception e) {
+                    log("Could not load from path " + path + ": " + e.getMessage());
+                }
+            }
+        }
+        
+        // 3. Update the template if content was loaded
+        if (content != null) {
+            messageTemplates.put(templateKey, content);
+            log("Successfully loaded template: " + templateKey);
+        } else {
+            log("WARNING: Could not load template file " + filename + ", using default template for " + templateKey);
         }
     }
 
@@ -137,9 +179,11 @@ public class AdvancedAstmSimulator {
             System.out.println("6. Send Custom Message (from file)");
             System.out.println("7. Batch Test (All Messages)");
             System.out.println("8. Repeated Send (Keep-Alive Loop)");
-            System.out.println("9. Exit");
+            System.out.println("9. Show Template Content");
+            System.out.println("10. Reload Templates");
+            System.out.println("11. Exit");
             System.out.println("==========================================");
-            System.out.print("Select option (1-9): ");
+            System.out.print("Select option (1-11): ");
             
             try {
                 int choice = Integer.parseInt(userInput.nextLine().trim());
@@ -170,13 +214,19 @@ public class AdvancedAstmSimulator {
                         runRepeatedSend();
                         break;
                     case 9:
+                        showTemplateContent();
+                        break;
+                    case 10:
+                        loadMessageTemplates();
+                        break;
+                    case 11:
                         log("Exiting simulator...");
                         return;
                     default:
-                        System.out.println("Invalid option. Please select 1-9.");
+                        System.out.println("Invalid option. Please select 1-11.");
                 }
             } catch (NumberFormatException e) {
-                System.out.println("Invalid input. Please enter a number 1-9.");
+                System.out.println("Invalid input. Please enter a number 1-11.");
             }
         }
     }
@@ -271,6 +321,29 @@ public class AdvancedAstmSimulator {
         log("Repeated sending completed!");
     }
 
+    private void showTemplateContent() {
+        System.out.println("\n==========================================");
+        System.out.println("Template Content");
+        System.out.println("==========================================");
+        
+        for (Map.Entry<String, String> entry : messageTemplates.entrySet()) {
+            System.out.println("\n--- " + entry.getKey() + " Template ---");
+            String content = entry.getValue();
+            // Show first few lines to verify content
+            String[] lines = content.split("\\r\\n|\\r|\\n");
+            for (int i = 0; i < Math.min(lines.length, 5); i++) {
+                System.out.println("  " + lines[i]);
+            }
+            if (lines.length > 5) {
+                System.out.println("  ... (" + (lines.length - 5) + " more lines)");
+            }
+            System.out.println("  Total length: " + content.length() + " characters");
+        }
+        
+        System.out.println("\nPress Enter to continue...");
+        userInput.nextLine();
+    }
+
     private String substituteVariables(String template) {
         String result = template;
         
@@ -313,39 +386,70 @@ public class AdvancedAstmSimulator {
         }
         log("← ACK");
         
-        // Step 3: Split message into records and send as frames
+        // Step 3: ASTM E1394 Compliant - Process each record individually
         String[] records = message.split("\\r\\n|\\r|\\n");
         log("Message split into " + records.length + " records");
         
         // Use same sequence logic as server: start at 1, increment, wrap after 7 to 0
         int currentFrameNumber = 1;
+        final int MAX_RECORD_SIZE = 240; // Max size for single frame
         
         for (int i = 0; i < records.length; i++) {
             String record = records[i].trim();
             if (record.isEmpty()) continue;
             
-            boolean isLastFrame = (i == records.length - 1);
-            // ASTM sequence: 1,2,3,4,5,6,7,0,1,2,3,4,5,6,7,0... (same as server logic)
-            int frameSequence = currentFrameNumber;
-            
             log("Record " + (i+1) + ": " + record);
             
-            byte[] frame = createFrame(record, frameSequence, isLastFrame);
-            log("→ Frame " + frameSequence + (isLastFrame ? " (LAST)" : ""));
-            outputStream.write(frame);
-            outputStream.flush();
-            
-            // Wait for ACK
-            response = inputStream.read();
-            if (response != ACK) {
-                throw new IOException("Frame " + frameSequence + " rejected: " + controlCharName(response));
-            }
-            log("← ACK");
-            
-            // Update frame number for next frame (same logic as server)
-            currentFrameNumber++;
-            if (currentFrameNumber > 7) {
-                currentFrameNumber = 0; // Wrap around after 7
+            // Check if record fits in single frame
+            if (record.length() <= MAX_RECORD_SIZE) {
+                // Complete record fits - use ETX (isLastFrame=true)
+                byte[] frame = createFrame(record, currentFrameNumber, true);
+                log("→ Frame " + currentFrameNumber + " (COMPLETE RECORD with ETX)");
+                outputStream.write(frame);
+                outputStream.flush();
+                
+                // Wait for ACK
+                response = inputStream.read();
+                if (response != ACK) {
+                    throw new IOException("Frame " + currentFrameNumber + " rejected: " + controlCharName(response));
+                }
+                log("← ACK");
+                
+                // Update frame number
+                currentFrameNumber++;
+                if (currentFrameNumber > 7) {
+                    currentFrameNumber = 0; // Wrap around after 7
+                }
+            } else {
+                // Large record needs splitting - use ETB for intermediate, ETX for last
+                log("Record too large (" + record.length() + " chars), splitting across frames");
+                int start = 0;
+                while (start < record.length()) {
+                    int end = Math.min(start + MAX_RECORD_SIZE, record.length());
+                    String framePart = record.substring(start, end);
+                    boolean isLastFrameOfRecord = (end >= record.length());
+                    
+                    byte[] frame = createFrame(framePart, currentFrameNumber, isLastFrameOfRecord);
+                    log("→ Frame " + currentFrameNumber + 
+                        (isLastFrameOfRecord ? " (LAST PART with ETX)" : " (INTERMEDIATE PART with ETB)"));
+                    outputStream.write(frame);
+                    outputStream.flush();
+                    
+                    // Wait for ACK
+                    response = inputStream.read();
+                    if (response != ACK) {
+                        throw new IOException("Frame " + currentFrameNumber + " rejected: " + controlCharName(response));
+                    }
+                    log("← ACK");
+                    
+                    // Update frame number
+                    currentFrameNumber++;
+                    if (currentFrameNumber > 7) {
+                        currentFrameNumber = 0; // Wrap around after 7
+                    }
+                    
+                    start = end;
+                }
             }
         }
         
@@ -370,6 +474,9 @@ public class AdvancedAstmSimulator {
             // This shouldn't happen with ByteArrayOutputStream
         }
         
+        // Add CR before terminator (ASTM E1394 requirement)
+        frame.write(CR);
+        
         // Terminator
         byte terminator = isLastFrame ? ETX : ETB;
         frame.write(terminator);
@@ -379,6 +486,7 @@ public class AdvancedAstmSimulator {
         for (byte b : dataBytes) {
             checksum += (b & 0xFF);
         }
+        checksum += CR; // Include CR in checksum
         checksum += terminator;
         checksum &= 0xFF;
         

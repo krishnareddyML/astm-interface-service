@@ -193,15 +193,19 @@ public class SimpleKeepAliveSimulator {
             // This shouldn't happen with ByteArrayOutputStream
         }
         
+        // Add CR before terminator (ASTM E1394 requirement)
+        frame.write(CR);
+        
         // Terminator (ETX for last frame, ETB for intermediate frames)
         byte terminator = isLastFrame ? ETX : ETB; // ETB = 0x17
         frame.write(terminator);
         
-        // Calculate checksum (sequence + data + terminator)
+        // Calculate checksum (sequence + data + CR + terminator)
         int checksum = ('0' + frameSequence);
         for (byte b : dataBytes) {
             checksum += (b & 0xFF);
         }
+        checksum += CR; // Include CR in checksum
         checksum += terminator;
         checksum &= 0xFF;
         

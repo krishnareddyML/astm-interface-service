@@ -568,10 +568,10 @@ public class OrthoVisionDriver implements InstrumentDriver {
     private void determineMessageType(AstmMessage astmMessage) {
         if (astmMessage.hasResults() || astmMessage.hasMResults()) {
             astmMessage.setMessageType("RESULT");
-        } else if (astmMessage.hasOrders()) {
-            astmMessage.setMessageType("ORDER");
-        } else if (astmMessage.hasQueries()) {
+        }else if (astmMessage.hasQueries()) {
             astmMessage.setMessageType("QUERY");
+        }  else if (astmMessage.hasOrders()) {
+            astmMessage.setMessageType("ORDER");
         } else {
             astmMessage.setMessageType("QUERY");
         }

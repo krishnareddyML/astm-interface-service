@@ -167,6 +167,9 @@ public class ChecksumUtils {
             frame.append(data);
         }
         
+        // Add CR before terminator (ASTM E1394 requirement)
+        frame.append(CR);
+        
         // Add terminator
         if (isLastFrame) {
             frame.append(ETX);
@@ -234,12 +237,20 @@ public class ChecksumUtils {
             }
             cleanFrame = cleanFrame.substring(0, cleanFrame.length() - 2);
 
-            // Find the end marker (ETX or ETB)
+            // Find the end marker (ETX or ETB) - now preceded by CR
             int endIndex = cleanFrame.length();
             if (cleanFrame.endsWith(String.valueOf(ETX))) {
                 endIndex = cleanFrame.length() - 1;
+                // Check if CR precedes the ETX (ASTM E1394 format)
+                if (endIndex > 0 && cleanFrame.charAt(endIndex - 1) == CR) {
+                    endIndex = endIndex - 1; // Exclude CR from data
+                }
             } else if (cleanFrame.endsWith(String.valueOf(ETB))) {
                 endIndex = cleanFrame.length() - 1;
+                // Check if CR precedes the ETB (ASTM E1394 format)
+                if (endIndex > 0 && cleanFrame.charAt(endIndex - 1) == CR) {
+                    endIndex = endIndex - 1; // Exclude CR from data
+                }
             }
 
             // Extract data (skip STX and frame number)

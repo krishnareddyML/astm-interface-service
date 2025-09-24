@@ -7,8 +7,10 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.lang.reflect.Field;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 
 public class AstmParserSwingApp {
@@ -132,6 +134,7 @@ public class AstmParserSwingApp {
         if (fields.length > 4) record.setPatientIdAlternate(getFieldValue(fields, 4));
         if (fields.length > 5) record.setPatientName(getFieldValue(fields, 5));
         if (fields.length > 6) record.setMothersMaidenName(getFieldValue(fields, 6));
+        if (fields.length > 7) record.setBirthDate(parseDateTime(getFieldValue(fields, 7)));
         if (fields.length > 8) record.setPatientSex(getFieldValue(fields, 8));
         if (fields.length > 13) record.setAttendingPhysicianId(getFieldValue(fields, 13));
     }
@@ -189,6 +192,33 @@ public class AstmParserSwingApp {
         try {
             return (value != null && !value.isEmpty()) ? Integer.parseInt(value) : null;
         } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static LocalDateTime parseDateTime(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        
+        try {
+            String dateStr = value.trim();
+            
+            // Handle different ASTM date formats: YYYYMMDD, YYYYMMDDHHMM, or YYYYMMDDHHMMSS
+            if (dateStr.length() == 8) {
+                // YYYYMMDD format - append default time
+                return LocalDate.parse(dateStr, DateTimeFormatter.ofPattern("yyyyMMdd")).atStartOfDay();
+            } else if (dateStr.length() == 12) {
+                // YYYYMMDDHHMM format
+                return LocalDateTime.parse(dateStr, DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
+            } else if (dateStr.length() == 14) {
+                // YYYYMMDDHHMMSS format
+                return LocalDateTime.parse(dateStr, DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+            } else {
+                // Default to date format and start of day
+                return LocalDate.parse(dateStr, DateTimeFormatter.ofPattern("yyyyMMdd")).atStartOfDay();
+            }
+        } catch (DateTimeParseException e) {
             return null;
         }
     }
