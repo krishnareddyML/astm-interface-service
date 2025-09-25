@@ -155,7 +155,7 @@ public class AdvancedAstmSimulator {
         }
     }
 
-    private void connect() throws IOException {
+    void connectForTesting() throws IOException {
         socket = new Socket();
         socket.connect(new InetSocketAddress(host, port), 10000);
         socket.setKeepAlive(true);
@@ -164,6 +164,14 @@ public class AdvancedAstmSimulator {
         outputStream = socket.getOutputStream();
         
         log("Connected to " + host + ":" + port);
+    }
+
+    void sendAstmMessageForTesting(String message) throws IOException {
+        sendAstmMessage(message);
+    }
+
+    private void connect() throws IOException {
+        connectForTesting();
     }
 
     private void showMainMenu() {
@@ -181,9 +189,10 @@ public class AdvancedAstmSimulator {
             System.out.println("8. Repeated Send (Keep-Alive Loop)");
             System.out.println("9. Show Template Content");
             System.out.println("10. Reload Templates");
-            System.out.println("11. Exit");
+            System.out.println("11. Test ETB Frame Splitting (Large Record)");
+            System.out.println("12. Exit");
             System.out.println("==========================================");
-            System.out.print("Select option (1-11): ");
+            System.out.print("Select option (1-12): ");
             
             try {
                 int choice = Integer.parseInt(userInput.nextLine().trim());
@@ -220,13 +229,16 @@ public class AdvancedAstmSimulator {
                         loadMessageTemplates();
                         break;
                     case 11:
+                        testETBFrameSplitting();
+                        break;
+                    case 12:
                         log("Exiting simulator...");
                         return;
                     default:
-                        System.out.println("Invalid option. Please select 1-11.");
+                        System.out.println("Invalid option. Please select 1-12.");
                 }
             } catch (NumberFormatException e) {
-                System.out.println("Invalid input. Please enter a number 1-11.");
+                System.out.println("Invalid input. Please enter a number 1-12.");
             }
         }
     }
@@ -319,6 +331,75 @@ public class AdvancedAstmSimulator {
         }
         
         log("Repeated sending completed!");
+    }
+
+    private void testETBFrameSplitting() {
+        try {
+            log("=== ETB Frame Splitting Test ===");
+            log("Creating message with large record that exceeds 240 characters...");
+            
+            // Create a message with a very large M record
+            StringBuilder message = new StringBuilder();
+            message.append("H|\\^&|||OCD^VISION^5.13.1.46935^ETBTest|||||||P|LIS2-A|20240925120000\n");
+            message.append("P|1|PID123456||NID123456^MID123456^OID123456|TestPatient^Large^Record|Unknown|19900101000000|U|||||\n");
+            message.append("O|1|SID12345||TestOrder|N|20240925120000|||||||||TESTLAB|||||||20240925120000|||F|||||\n");
+            
+            // Create very large M record (well over 240 characters)
+            message.append("M|1|ETBTest|");
+            message.append("This is an intentionally very long comment record designed to test ASTM E1394 frame splitting with ETB and ETX terminators. ");
+            message.append("The record contains extensive details about laboratory procedures, quality control measures, and technical specifications. ");
+            message.append("It includes information about calibration procedures, maintenance schedules, troubleshooting steps, and reference ranges. ");
+            message.append("Additional technical data encompasses instrument configuration parameters, environmental conditions, and operational guidelines. ");
+            message.append("This comprehensive comment ensures the record significantly exceeds the 240-character frame size limit, thereby triggering ");
+            message.append("the proper ETB/ETX frame splitting logic in the ASTM protocol implementation. The comment continues with more detailed ");
+            message.append("information about specimen handling procedures, chain of custody requirements, and regulatory compliance measures. ");
+            message.append("Further details include software version information, hardware specifications, and performance validation data that ");
+            message.append("make this record extremely long to thoroughly test the frame splitting functionality in both simulator and server modules.");
+            message.append("\n");
+            
+            message.append("R|1|TestResult|Normal|||||F||Manual||20240925120000|TestOp\n");
+            message.append("L|1|N||\n");
+            
+            String testMessage = message.toString();
+            
+            // Show what will happen
+            String[] records = testMessage.split("\\r\\n|\\r|\\n");
+            log("Message contains " + records.length + " records:");
+            
+            for (int i = 0; i < records.length; i++) {
+                String record = records[i].trim();
+                if (record.isEmpty()) continue;
+                
+                log("  Record " + (i+1) + " (" + record.charAt(0) + "): " + record.length() + " chars");
+                
+                if (record.length() > 240) {
+                    int frameCount = (int) Math.ceil((double) record.length() / 240);
+                    log("    → Will be split into " + frameCount + " frames with ETB/ETX");
+                    
+                    for (int f = 0; f < frameCount; f++) {
+                        int start = f * 240;
+                        int end = Math.min(start + 240, record.length());
+                        boolean isLast = (end >= record.length());
+                        String terminator = isLast ? "ETX" : "ETB";
+                        
+                        log("    → Frame " + (f+1) + ": chars " + start + "-" + (end-1) + 
+                            " (" + (end-start) + " chars) -> " + terminator);
+                    }
+                } else {
+                    log("    → Single frame with ETX");
+                }
+            }
+            
+            log("");
+            log("Now sending the message to test actual ETB/ETX frame splitting...");
+            sendAstmMessage(testMessage);
+            log("ETB Frame Splitting Test completed successfully!");
+            log("Check the server logs to verify ETB/ETX frame handling.");
+            
+        } catch (Exception e) {
+            log("ERROR during ETB test: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     private void showTemplateContent() {
@@ -500,6 +581,10 @@ public class AdvancedAstmSimulator {
         frame.write(LF);
         
         return frame.toByteArray();
+    }
+
+    void shutdownForTesting() {
+        shutdown();
     }
 
     private void shutdown() {

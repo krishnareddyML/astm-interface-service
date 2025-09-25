@@ -344,8 +344,19 @@ public class ASTMProtocolStateMachine {
             String frameData = ChecksumUtils.extractFrameData(frame);
             if (frameData != null) {
                 completeMessage.append(frameData);
-                // CRITICAL FIX: Append newline between frames to preserve record structure
-                completeMessage.append("\r\n");
+                
+                // CRITICAL ETB/ETX FIX: Only append newline after ETX (complete records)
+                // ETB frames are parts of the same record - don't add \r\n between them
+                boolean isETX = frame.contains(String.valueOf((char)0x03)); // ETX - complete record
+                boolean isETB = frame.contains(String.valueOf((char)0x17)); // ETB - intermediate frame
+                
+                if (isETX) {
+                    completeMessage.append("\r\n");
+                    log.debug("Frame {} with ETX - added record separator", frameNumber);
+                } else if (isETB) {
+                    log.debug("Frame {} with ETB - continuing same record", frameNumber);
+                }
+                
                 receivedFrames.add(frame);
             }
 
@@ -362,7 +373,21 @@ public class ASTMProtocolStateMachine {
         String result = completeMessage.toString();
         if (!result.isEmpty()) {
             log.info("Successfully received and assembled ASTM message from {} ({} characters, {} frames)", 
-                       instrumentName, result.length(), receivedFrames.size());
+                      instrumentName, result.length(), receivedFrames.size());
+            
+            // Debug: Log reassembled message for ETB testing
+            if (log.isDebugEnabled()) {
+                String[] records = result.split("\\r\\n|\\r|\\n");
+                log.debug("Reassembled message contains {} records:", records.length);
+                for (int i = 0; i < records.length; i++) {
+                    String record = records[i].trim();
+                    if (!record.isEmpty()) {
+                        log.debug("  Record {}: {} ({} chars)", i+1, 
+                            record.length() > 100 ? record.substring(0, 100) + "..." : record,
+                            record.length());
+                    }
+                }
+            }
         }
 
         return result.isEmpty() ? null : result;
