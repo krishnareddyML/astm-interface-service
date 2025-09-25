@@ -156,28 +156,20 @@ public class OrderMessageService {
                 return false;
             }
             
-            log.info("🎯 Instrument {} is ready (state: {}), sending message {}", 
+            log.info("🎯 Instrument {} is ready (state: {}), queueing message {} for sending", 
                      instrumentName, connectionHandler.getProtocolStateMachine().getCurrentState(),
                      orderMessage.getMessageId());
             
-            // Send the message
-            boolean success = connectionHandler.sendMessage(astmMessage);
+            // Queue the message for sending (non-blocking approach)
+            connectionHandler.queueMessageForSending(astmMessage);
             
-            if (success) {
-                // Mark as successful
-                orderMessage.markSuccess();
-                repository.update(orderMessage);
-                
-                log.info("✅ Successfully sent order message {} to instrument {} (attempt {})", 
-                         orderMessage.getMessageId(), instrumentName, orderMessage.getRetryCount() + 1);
-                return true;
-                
-            } else {
-                log.warn("❌ Failed to send order message {} to instrument {} (attempt {})", 
-                         orderMessage.getMessageId(), instrumentName, orderMessage.getRetryCount() + 1);
-                scheduleRetry(orderMessage, collisionRetryDelayMinutes, "Send operation failed");
-                return false;
-            }
+            // Mark as successful since it's queued (delivery will be handled by the queue processor)
+            orderMessage.markSuccess();
+            repository.update(orderMessage);
+            
+            log.info("✅ Successfully queued order message {} for instrument {} (attempt {})", 
+                     orderMessage.getMessageId(), instrumentName, orderMessage.getRetryCount() + 1);
+            return true;
             
         } catch (Exception e) {
             log.error("❌ Exception processing order message {} for instrument {}: {}", 

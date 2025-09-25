@@ -272,7 +272,33 @@ public class ASTMProtocolStateMachine {
      * 2. Connection may timeout during long idle periods → Server handles gracefully
      * 3. Instrument reconnects when it has new data → Normal ASTM behavior
      */
-    public synchronized String receiveMessage() throws IOException {
+    public String receiveMessage() throws IOException {
+        try {
+            // Don't change the socket timeout - preserve the original READ_TIMEOUT_MS
+            // Just use inputStream.available() for non-blocking behavior
+            
+            // If the same thread is currently sending, allow it to receive the ACK
+            if (THREAD_IS_SENDING.get() == Boolean.TRUE) {
+                log.debug("💭 Thread {} is sending - allowing receive for ACK", 
+                         Thread.currentThread().getName());
+                return doReceiveMessageNonBlocking();
+            }
+            
+            synchronized (this) {
+                return doReceiveMessageNonBlocking();
+            }
+        } catch (SocketTimeoutException e) {
+            // This will now use the proper READ_TIMEOUT_MS (5 minutes) from ASTMServer
+            log.debug("Socket timeout after {}ms - no data received from {}", 
+                     socket.getSoTimeout(), instrumentName);
+            return null;
+        } catch (Exception e) {
+            log.error("❌ Error receiving message: {}", e.getMessage());
+            throw e;
+        }
+    }
+
+    private String doReceiveMessageNonBlocking() throws IOException {
         // SYNCHRONIZATION FIX: Only block receive if ANOTHER thread is sending
         // The same thread that initiated sending should be able to receive ACKs
         boolean currentThreadIsSending = THREAD_IS_SENDING.get();
@@ -283,43 +309,40 @@ public class ASTMProtocolStateMachine {
             return null; // Let the sending thread complete its operation
         }
         
-        log.debug("Listening for incoming data from {} (current state: {}, thread sending: {})", 
-                 instrumentName, currentState, currentThreadIsSending);
+        // log.debug("Listening for incoming data from {} (current state: {}, thread sending: {})", 
+        //          instrumentName, currentState, currentThreadIsSending);
 
-        while (true) {
-            try {
-                int receivedChar = inputStream.read();
-                
-                if (receivedChar == -1) {
-                    // Clean disconnect
-                    log.debug("Connection closed cleanly by {}", instrumentName);
-                    return null;
-                }
-                
-                if (receivedChar == ChecksumUtils.ENQ) {
-                    // Instrument wants to send a message
-                    log.debug("Received ENQ from {}, starting message reception", instrumentName);
-                    return handleIncomingMessageSynchronized();
-                }
-                
-                // For any other character, check current state for context
-                if (currentState == State.IDLE || currentState == State.RECEIVING) {
-                    // Normal listening state - log as unexpected and continue
-                    log.debug("Received unexpected character '{}' (0x{}) from {} while in {} state, continuing to listen", 
-                             (char)receivedChar, Integer.toHexString(receivedChar), instrumentName, currentState);
-                } else {
-                    // We're in a sending state - this shouldn't happen due to our state check above, but log it
-                    log.warn("Received character '{}' (0x{}) from {} while in {} state - this indicates a synchronization issue", 
-                             (char)receivedChar, Integer.toHexString(receivedChar), instrumentName, currentState);
-                }
-                
-            } catch (SocketTimeoutException e) {
-                // Socket timeout indicates potential connection issue
-                log.warn("Socket timeout on {} after {}ms - connection may be stale", 
-                         instrumentName, socket.getSoTimeout());
+        // Check if data is available for non-blocking behavior
+        if (inputStream.available() > 0) {
+            // Data is available, read it normally (this will respect the socket timeout)
+            int receivedChar = inputStream.read();
+            
+            if (receivedChar == -1) {
+                // Clean disconnect
+                log.debug("Connection closed cleanly by {}", instrumentName);
                 return null;
             }
+            
+            if (receivedChar == ChecksumUtils.ENQ) {
+                // Instrument wants to send a message
+                log.debug("Received ENQ from {}, starting message reception", instrumentName);
+                return handleIncomingMessageSynchronized();
+            }
+            
+            // For any other character, check current state for context
+            if (currentState == State.IDLE || currentState == State.RECEIVING) {
+                // Normal listening state - log as unexpected and continue
+                log.debug("Received unexpected character '{}' (0x{}) from {} while in {} state, continuing to listen", 
+                         (char)receivedChar, Integer.toHexString(receivedChar), instrumentName, currentState);
+            } else {
+                // We're in a sending state - this shouldn't happen due to our state check above, but log it
+                log.warn("Received character '{}' (0x{}) from {} while in {} state - this indicates a synchronization issue", 
+                         (char)receivedChar, Integer.toHexString(receivedChar), instrumentName, currentState);
+            }
         }
+        
+        // No data available immediately, return null (non-blocking behavior)
+        return null;
     }
 
     /**

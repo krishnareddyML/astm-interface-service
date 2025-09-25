@@ -11,6 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * Production-Ready Instrument Connection Handler
@@ -36,6 +38,9 @@ public class InstrumentConnectionHandler implements Runnable {
     private final ResultQueuePublisher resultPublisher;
     private final ServerMessageService serverMessageService;
     private final ASTMProtocolStateMachine protocolStateMachine;
+    
+    // Outgoing message queue for non-blocking send operations
+    private final BlockingQueue<AstmMessage> outgoingMessageQueue = new LinkedBlockingQueue<>();
     
     private volatile boolean running = true;
     private volatile boolean connected = false;
@@ -65,15 +70,17 @@ public class InstrumentConnectionHandler implements Runnable {
             // Main connection loop with graceful termination
             while (running && socket.isConnected() && !socket.isClosed()) {
                 try {
-                    // CRITICAL FIX: handleIncomingMessages() now returns boolean
-                    // If it returns false, we break the loop immediately for graceful termination
+                    // 1. Handle any incoming messages (non-blocking)
                     if (!handleIncomingMessages()) {
                         log.info("handleIncomingMessages returned false - terminating connection handler for {}", 
                                    instrumentName);
                         break;
                     }
                     
-                    // Small delay to prevent busy waiting on very active connections
+                    // 2. Check for and send any outgoing messages from our queue
+                    processOutgoingMessages();
+                    
+                    // Brief pause to prevent CPU spinning
                     Thread.sleep(100);
                     
                 } catch (SocketTimeoutException e) {
@@ -111,6 +118,44 @@ public class InstrumentConnectionHandler implements Runnable {
     }
 
     /**
+     * Process any queued outgoing messages
+     * This method checks the outgoing message queue and sends messages when possible
+     */
+    private void processOutgoingMessages() {
+        try {
+            // Check if we have any messages to send and if the instrument is ready
+            if (!outgoingMessageQueue.isEmpty() && !isBusy()) {
+                AstmMessage messageToSend = outgoingMessageQueue.poll(); // Retrieves and removes
+                
+                if (messageToSend != null) {
+                    log.info("🚀 Processing outgoing message for instrument {} (remaining in queue: {})", 
+                             instrumentName, outgoingMessageQueue.size());
+                    
+                    // Build ASTM message string using the driver
+                    String rawMessage = driver.build(messageToSend);
+                    
+                    if (rawMessage != null) {
+                        // Send using protocol state machine
+                        boolean success = protocolStateMachine.sendMessage(rawMessage);
+                        
+                        if (success) {
+                            log.info("✅ Successfully sent queued message to instrument {}", instrumentName);
+                        } else {
+                            log.error("❌ Failed to send queued message to instrument {}", instrumentName);
+                            // Could re-queue the message here if desired
+                        }
+                    } else {
+                        log.error("❌ Failed to build ASTM message for instrument {}", instrumentName);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("❌ Error processing outgoing messages for instrument {}: {}", 
+                     instrumentName, e.getMessage(), e);
+        }
+    }
+
+    /**
      * PRODUCTION-READY: Handle incoming ASTM messages with graceful termination
      * 
      * CRITICAL FIX: This method now returns a boolean to signal the main loop
@@ -119,17 +164,23 @@ public class InstrumentConnectionHandler implements Runnable {
      * @return true to continue the main loop, false to terminate gracefully
      */
     private boolean handleIncomingMessages() throws IOException, Exception {
-        // Receive ASTM message from instrument
+        // Receive ASTM message from instrument (non-blocking)
         String rawMessage = protocolStateMachine.receiveMessage();
 
-        // CRITICAL FIX: If receiveMessage() returns null, it indicates either:
-        // 1. Clean disconnect (client closed connection)
-        // 2. Stale connection timeout (6 minutes with no keep-alive)
-        // In both cases, we should terminate the handler gracefully
+        // NON-BLOCKING FIX: receiveMessage() returns null in two scenarios:
+        // 1. No data immediately available (non-blocking behavior) → return true (keep connection alive)
+        // 2. Actual connection closed/timeout → check socket state to differentiate
         if (rawMessage == null) {
-            log.warn("No message received from {} (client disconnected or connection timed out). " +
-                       "Terminating connection handler gracefully.", getRemoteAddress());
-            return false; // Signal main loop to terminate
+            // Check if the socket is actually closed/disconnected
+            if (!protocolStateMachine.isConnected()) {
+                log.warn("Connection lost to {} (socket closed). Terminating connection handler.", 
+                         getRemoteAddress());
+                return false; // Signal main loop to terminate
+            }
+            
+            // No data available right now, but connection is still alive
+            log.debug("No data immediately available from {} - continuing to listen", instrumentName);
+            return true; // Keep connection alive
         }
 
         // Process valid messages
@@ -275,6 +326,27 @@ public class InstrumentConnectionHandler implements Runnable {
             log.error("Error sending ASTM message to {}: {}", instrumentName, e.getMessage(), e);
             return false;
         }
+    }
+
+    /**
+     * Queue a message for sending to the instrument
+     * This enables non-blocking outbound communication
+     */
+    public boolean queueMessageForSending(AstmMessage message) {
+        if (!isConnected()) {
+            log.warn("Cannot queue message for {}: connection is not active", instrumentName);
+            return false;
+        }
+        
+        boolean queued = outgoingMessageQueue.offer(message);
+        if (queued) {
+            log.info("📤 Queued outgoing message for instrument {} (queue size: {})", 
+                     instrumentName, outgoingMessageQueue.size());
+        } else {
+            log.error("❌ Failed to queue message for instrument {} - queue is full", instrumentName);
+        }
+        
+        return queued;
     }
 
     /**
