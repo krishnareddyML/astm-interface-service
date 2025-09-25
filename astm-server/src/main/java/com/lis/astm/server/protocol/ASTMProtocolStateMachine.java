@@ -41,6 +41,9 @@ public class ASTMProtocolStateMachine {
 
     // Protocol timeouts (in milliseconds)
     private static final int ACK_TIMEOUT = 15000; // 15 seconds for ACK response
+    
+    // Thread-local tracking to allow same thread to receive during send operations
+    private static final ThreadLocal<Boolean> THREAD_IS_SENDING = ThreadLocal.withInitial(() -> false);
 
     private final Socket socket;
     private final InputStream inputStream;
@@ -170,95 +173,118 @@ public class ASTMProtocolStateMachine {
 
         log.info("Sending ASTM message to {} ({} characters)", instrumentName, message.length());
 
-        // Send ENQ first
-        if (!sendEnq()) {
-            return false;
-        }
-
-        // Wait for ACK response
-        long startTime = System.currentTimeMillis();
-        boolean ackReceived = false;
-        while (System.currentTimeMillis() - startTime < ACK_TIMEOUT) {
-            try {
-                int response = inputStream.read();
-                if (response == ChecksumUtils.ACK) {
-                    ackReceived = true;
-                    break;
-                } else if (response == ChecksumUtils.NAK || response == ChecksumUtils.EOT) {
-                    log.warn("Received negative response {} from {} for ENQ", response, instrumentName);
-                    return false;
-                } else if (response == -1) {
-                    log.error("Connection closed while waiting for ENQ ACK from {}", instrumentName);
-                    return false;
-                }
-            } catch (SocketTimeoutException e) {
-                // Continue waiting for ACK
-                Thread.yield();
-            } catch (IOException e) {
-                log.error("IO error waiting for ENQ ACK from {}: {}", instrumentName, e.getMessage());
+        // Mark this thread as the sending thread
+        THREAD_IS_SENDING.set(true);
+        
+        try {
+            // Send ENQ first
+            if (!sendEnq()) {
                 return false;
             }
-        }
 
-        if (!ackReceived) {
-            log.error("No ACK received for ENQ from {}", instrumentName);
-            return false;
-        }
-
-        // ASTM E1394 Compliant: Process records individually
-        final int MAX_FRAME_SIZE = 240;
-        String[] records = message.split("\\r\\n|\\r|\\n");
-        
-        currentFrameNumber = 1;
-        for (String record : records) {
-            if (record.trim().isEmpty()) continue;
-            
-            // Check if record fits in single frame
-            if (record.length() <= MAX_FRAME_SIZE) {
-                // Complete record fits in one frame - use ETX
-                if (!sendFrame(record, true)) { // isLastFrame=true means use ETX
-                    log.error("Failed to send complete record to {}", instrumentName);
-                    sendEot(); // Send EOT to clean up
+            // Wait for ACK response (this thread can now receive during send)
+            long startTime = System.currentTimeMillis();
+            boolean ackReceived = false;
+            while (System.currentTimeMillis() - startTime < ACK_TIMEOUT) {
+                try {
+                    int response = inputStream.read();
+                    if (response == ChecksumUtils.ACK) {
+                        ackReceived = true;
+                        break;
+                    } else if (response == ChecksumUtils.NAK || response == ChecksumUtils.EOT) {
+                        log.warn("Received negative response {} from {} for ENQ", response, instrumentName);
+                        return false;
+                    } else if (response == -1) {
+                        log.error("Connection closed while waiting for ENQ ACK from {}", instrumentName);
+                        return false;
+                    }
+                } catch (SocketTimeoutException e) {
+                    // Continue waiting for ACK
+                    Thread.yield();
+                } catch (IOException e) {
+                    log.error("IO error waiting for ENQ ACK from {}: {}", instrumentName, e.getMessage());
                     return false;
                 }
-            } else {
-                // Large record needs splitting across frames - use ETB for intermediate, ETX for last
-                int start = 0;
-                while (start < record.length()) {
-                    int end = Math.min(start + MAX_FRAME_SIZE, record.length());
-                    String frameData = record.substring(start, end);
-                    boolean isLastFrameOfRecord = (end >= record.length());
-                    
-                    if (!sendFrame(frameData, isLastFrameOfRecord)) {
-                        log.error("Failed to send frame part to {}", instrumentName);
+            }
+
+            if (!ackReceived) {
+                log.error("No ACK received for ENQ from {}", instrumentName);
+                return false;
+            }
+
+            // ASTM E1394 Compliant: Process records individually
+            final int MAX_FRAME_SIZE = 240;
+            String[] records = message.split("\\r\\n|\\r|\\n");
+            
+            currentFrameNumber = 1;
+            for (String record : records) {
+                if (record.trim().isEmpty()) continue;
+                
+                // Check if record fits in single frame
+                if (record.length() <= MAX_FRAME_SIZE) {
+                    // Complete record fits in one frame - use ETX
+                    if (!sendFrame(record, true)) { // isLastFrame=true means use ETX
+                        log.error("Failed to send complete record to {}", instrumentName);
                         sendEot(); // Send EOT to clean up
                         return false;
                     }
-                    start = end;
+                } else {
+                    // Large record needs splitting across frames - use ETB for intermediate, ETX for last
+                    int start = 0;
+                    while (start < record.length()) {
+                        int end = Math.min(start + MAX_FRAME_SIZE, record.length());
+                        String frameData = record.substring(start, end);
+                        boolean isLastFrameOfRecord = (end >= record.length());
+                        
+                        if (!sendFrame(frameData, isLastFrameOfRecord)) {
+                            log.error("Failed to send frame part to {}", instrumentName);
+                            sendEot(); // Send EOT to clean up
+                            return false;
+                        }
+                        start = end;
+                    }
                 }
             }
-        }
 
-        // Send EOT to end transmission
-        sendEot();
-        log.info("Successfully sent ASTM message to {}", instrumentName);
-        return true;
+            // Send EOT to end transmission
+            sendEot();
+            log.info("Successfully sent ASTM message to {}", instrumentName);
+            return true;
+            
+        } finally {
+            // Always clear the thread-local flag when send operation is complete
+            THREAD_IS_SENDING.set(false);
+        }
     }
 
     /**
-     * Listen for incoming data from instruments
+     * THREAD-SAFE: Listen for incoming data from instruments
      * 
      * This method implements the standard ASTM pattern where the server waits for
      * instruments to initiate communication. When an instrument has data to send,
      * it will send an ENQ to start the message exchange.
+     * 
+     * SYNCHRONIZATION FIX: Made synchronized to prevent concurrent access to inputStream
+     * but allows the same thread that's sending to also receive ACK responses.
      * 
      * Expected behavior:
      * 1. Instrument sends ENQ when it has results → Server processes the message
      * 2. Connection may timeout during long idle periods → Server handles gracefully
      * 3. Instrument reconnects when it has new data → Normal ASTM behavior
      */
-    public String receiveMessage() throws IOException {
-        log.debug("Listening for incoming data from {}", instrumentName);
+    public synchronized String receiveMessage() throws IOException {
+        // SYNCHRONIZATION FIX: Only block receive if ANOTHER thread is sending
+        // The same thread that initiated sending should be able to receive ACKs
+        boolean currentThreadIsSending = THREAD_IS_SENDING.get();
+        boolean anotherThreadIsSending = (currentState == State.WAITING_FOR_ACK || currentState == State.TRANSMITTING) && !currentThreadIsSending;
+        
+        if (anotherThreadIsSending) {
+            log.debug("Skipping receive message check - another thread is sending (state: {})", currentState);
+            return null; // Let the sending thread complete its operation
+        }
+        
+        log.debug("Listening for incoming data from {} (current state: {}, thread sending: {})", 
+                 instrumentName, currentState, currentThreadIsSending);
 
         while (true) {
             try {
@@ -276,9 +302,16 @@ public class ASTMProtocolStateMachine {
                     return handleIncomingMessageSynchronized();
                 }
                 
-                // For any other character, log and ignore (could be noise, etc.)
-                log.debug("Received unexpected character '{}' (0x{}) from {}, continuing to listen", 
-                         (char)receivedChar, Integer.toHexString(receivedChar), instrumentName);
+                // For any other character, check current state for context
+                if (currentState == State.IDLE || currentState == State.RECEIVING) {
+                    // Normal listening state - log as unexpected and continue
+                    log.debug("Received unexpected character '{}' (0x{}) from {} while in {} state, continuing to listen", 
+                             (char)receivedChar, Integer.toHexString(receivedChar), instrumentName, currentState);
+                } else {
+                    // We're in a sending state - this shouldn't happen due to our state check above, but log it
+                    log.warn("Received character '{}' (0x{}) from {} while in {} state - this indicates a synchronization issue", 
+                             (char)receivedChar, Integer.toHexString(receivedChar), instrumentName, currentState);
+                }
                 
             } catch (SocketTimeoutException e) {
                 // Socket timeout indicates potential connection issue

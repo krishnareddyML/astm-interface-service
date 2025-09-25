@@ -1,0 +1,26 @@
+{
+  "messageType": "ORDER",
+  "instrumentName": "CENTRIFUGE_001",
+  "headerRecord": {
+    "recordType": "H",
+    "delimiters": "|\\^&"
+  },
+  "patientRecord": {
+    "recordType": "P",
+    "sequenceNumber": 1
+  },
+  "orderRecords": [
+    {
+      "recordType": "O",
+      "sequenceNumber": 1,
+      "specimenId": "SID101",
+      "universalTestId": "ABO",
+      "actionCode": "N",
+      "specimenDescriptor": "CENTBLOOD"
+    }
+  ],
+  "terminatorRecord": {
+    "recordType": "L"
+  },
+  "rawMessage": "H|\\^&\r\nP|1\r\nO|1|SID101||ABO|||||||||||CENTBLOOD\r\nL\r\n"
+}

@@ -414,74 +414,37 @@ public class AdvancedAstmSimulator {
         try {
             log("=== Listen for Orders from Server ===");
             log("Simulator will now act as instrument receiving orders from server");
-            log("DEBUGGING: This will help identify server synchronization issues");
             log("Press Ctrl+C to stop listening");
             
             // Set socket timeout for periodic checks
             socket.setSoTimeout(1000);
             
-            log("Waiting for ENQ from server...");
-            log("NOTE: If server has separate listening/sending threads, ACK responses might get mixed up");
-            
-            // Buffer to help with debugging byte sequences
-            byte[] byteBuffer = new byte[20]; // Increased buffer size
-            int bufferIndex = 0;
+            log("Waiting for orders from server...");
             
             while (true) {
                 try {
                     int incomingByte = inputStream.read();
                     
-                    // Add to debug buffer
-                    if (bufferIndex < byteBuffer.length) {
-                        byteBuffer[bufferIndex++] = (byte)incomingByte;
-                    }
-                    
                     if (incomingByte == ENQ) {
-                        log("← ENQ received from server (byte: " + incomingByte + " = 0x" + Integer.toHexString(incomingByte).toUpperCase() + ")");
-                        log("SYNC CHECK: Server initiated communication properly with ENQ");
+                        log("← ENQ received from server - order incoming");
                         
                         // Send ACK to acknowledge ENQ
-                        log("→ ACK (acknowledging server's ENQ) - sending byte: " + ACK + " (0x" + Integer.toHexString(ACK).toUpperCase() + ")");
+                        log("→ ACK (acknowledging server's ENQ)");
                         outputStream.write(ACK);
                         outputStream.flush();
-                        log("→ ACK sent and flushed - server should now send frame");
-                        
-                        // Reset buffer for frame reception
-                        bufferIndex = 0;
                         
                         // Now handle the incoming message
                         handleOrderReceiving();
-                    } else if (incomingByte != -1) {
-                        log("← Unexpected byte while waiting for ENQ: " + controlCharName(incomingByte) + 
-                            " (decimal: " + incomingByte + ", hex: 0x" + Integer.toHexString(incomingByte).toUpperCase() + 
-                            ", char: '" + (incomingByte >= 32 && incomingByte <= 126 ? (char)incomingByte : "non-printable") + "')");
                         
-                        // If we receive STX directly, it might be a frame without ENQ
-                        if (incomingByte == STX) {
-                            log("← STX received directly (server might have skipped ENQ), starting frame reception");
-                            handleDirectFrameReceiving(incomingByte);
-                        } else if (incomingByte == 0) {
-                            log("← NULL byte received - CRITICAL: This suggests server synchronization issues!");
-                            log("DIAGNOSIS: Server's listening thread might be interfering with sending thread");
-                            // Show what we've received so far
-                            if (bufferIndex > 0) {
-                                StringBuilder debugBytes = new StringBuilder();
-                                for (int i = 0; i < bufferIndex; i++) {
-                                    debugBytes.append("0x").append(Integer.toHexString(byteBuffer[i] & 0xFF).toUpperCase()).append(" ");
-                                }
-                                log("Recent bytes received: " + debugBytes.toString());
-                                log("PATTERN: If you see mixed ENQ/STX/ACK bytes, server has thread sync issues");
-                            }
-                        } else {
-                            log("← Continuing to listen for ENQ or STX...");
-                            // Periodically show buffer contents to track patterns
-                            if (bufferIndex >= 5) {
-                                StringBuilder recentBytes = new StringBuilder();
-                                for (int i = Math.max(0, bufferIndex - 5); i < bufferIndex; i++) {
-                                    recentBytes.append("0x").append(Integer.toHexString(byteBuffer[i] & 0xFF).toUpperCase()).append(" ");
-                                }
-                                log("Last 5 bytes pattern: " + recentBytes.toString());
-                            }
+                    } else if (incomingByte == STX) {
+                        log("← STX received directly (server skipped ENQ)");
+                        handleDirectFrameReceiving(incomingByte);
+                        
+                    } else if (incomingByte != -1) {
+                        // Only log if it's not expected noise
+                        if (incomingByte != 0) { // Ignore null bytes (common connection noise)
+                            log("← Unexpected byte: " + controlCharName(incomingByte) + 
+                                " (0x" + Integer.toHexString(incomingByte & 0xFF).toUpperCase() + ")");
                         }
                     }
                     
@@ -489,10 +452,10 @@ public class AdvancedAstmSimulator {
                     // Check if user wants to exit
                     if (System.in.available() > 0) {
                         System.in.read(); // consume input
-                        log("User interrupted listening");
+                        log("Listening stopped by user");
                         break;
                     }
-                    // Continue listening
+                    // Continue listening silently
                 }
             }
             
@@ -503,31 +466,23 @@ public class AdvancedAstmSimulator {
     }
     
     private void handleOrderReceiving() throws IOException {
-        // ENQ has already been acknowledged in listenForOrdersFromServer()
-        // Now we just need to handle the incoming frames
-        
         StringBuilder completeMessage = new StringBuilder();
         boolean messageComplete = false;
         
-        log("Ready to receive message frames...");
+        log("Ready to receive order frames...");
         
-        // Temporarily remove socket timeout for frame reception
+        // Remove socket timeout for frame reception
         socket.setSoTimeout(0);
         
         while (!messageComplete) {
-            log("Waiting for next frame or EOT...");
-            
             // Read first byte - should be STX for proper ASTM frames
             int firstByte = inputStream.read();
-            log("← Raw first byte: " + firstByte + " (0x" + Integer.toHexString(firstByte & 0xFF).toUpperCase() + ") expected STX=" + STX + " (0x" + Integer.toHexString(STX & 0xFF).toUpperCase() + ")");
             
             if (firstByte == STX) {
-                // Standard ASTM format: STX + frameSeq + data + CR + terminator + checksum + CR + LF
-                
                 // Read frame sequence
                 int frameSeq = inputStream.read();
                 char frameSeqChar = (char)frameSeq;
-                log("← ASTM Frame sequence: " + frameSeqChar + " (byte: " + frameSeq + ")");
+                log("← Receiving frame " + frameSeqChar);
                 
                 // Read frame data until we find CR followed by terminator
                 ByteArrayOutputStream frameData = new ByteArrayOutputStream();
@@ -535,59 +490,41 @@ public class AdvancedAstmSimulator {
                 boolean frameDataComplete = false;
                 
                 while ((b = inputStream.read()) != -1 && !frameDataComplete) {
-                    log("Reading data byte: " + b + " (0x" + Integer.toHexString(b & 0xFF).toUpperCase() + ") " + 
-                        (b >= 32 && b <= 126 ? "'" + (char)b + "'" : "non-printable"));
-                    
                     if (b == CR) {
-                        // Peek at next byte to see if it's a terminator
+                        // Check next byte for terminator
                         int nextByte = inputStream.read();
-                        log("After CR, next byte: " + nextByte + " (0x" + Integer.toHexString(nextByte & 0xFF).toUpperCase() + ") " + controlCharName(nextByte));
                         
                         if (nextByte == ETX || nextByte == ETB) {
-                            // This is the terminator - frame data is complete
+                            // Frame data complete
                             int terminator = nextByte;
                             
                             // Read checksum (2 hex chars)
-                            int checksum1 = inputStream.read();
-                            int checksum2 = inputStream.read();
+                            inputStream.read(); // checksum1
+                            inputStream.read(); // checksum2
                             
                             // Read final CR LF
-                            int finalCR = inputStream.read(); 
-                            int finalLF = inputStream.read(); 
+                            inputStream.read(); // CR
+                            inputStream.read(); // LF
                             
-                            log("Terminator: " + controlCharName(terminator));
-                            log("Checksum: " + (char)checksum1 + (char)checksum2);
-                            log("Final CR LF: " + finalCR + " " + finalLF);
-                            
-                            // Process frame data (without the final CR)
+                            // Process frame data
                             String frameContent = new String(frameData.toByteArray(), StandardCharsets.US_ASCII);
-                            log("Frame " + frameSeqChar + " content: " + frameContent);
                             
                             if (terminator == ETB) {
-                                log("← ETB (frame continues)");
-                                completeMessage.append(frameContent); // Don't add separator for ETB
-                            } else {
-                                log("← ETX (frame complete)");
+                                log("← Frame continues (ETB)");
                                 completeMessage.append(frameContent);
-                                completeMessage.append("\r\n"); // Add record separator
+                            } else {
+                                log("← Frame complete (ETX)");
+                                completeMessage.append(frameContent);
+                                completeMessage.append("\r\n");
                             }
                             
-                            // Send ACK for frame
-                            log("→ ACK (frame acknowledged) - sending byte: " + ACK + " (0x" + Integer.toHexString(ACK & 0xFF).toUpperCase() + ")");
+                            // Send ACK
+                            log("→ ACK");
                             outputStream.write(ACK);
                             outputStream.flush();
-                            log("→ ACK sent and flushed");
-                            
-                            // Small delay to ensure ACK is properly sent
-                            try {
-                                Thread.sleep(50);
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                            }
                             
                             frameDataComplete = true;
                         } else {
-                            // Not a terminator after CR, include both CR and the next byte in data
                             frameData.write(CR);
                             if (nextByte != -1) {
                                 frameData.write(nextByte);
@@ -603,23 +540,22 @@ public class AdvancedAstmSimulator {
                 messageComplete = true;
                 
             } else if (firstByte == -1) {
-                log("← Connection closed by server");
+                log("← Connection closed");
                 messageComplete = true;
                 
             } else {
-                log("← Unexpected byte while waiting for frame: " + controlCharName(firstByte) + " (0x" + Integer.toHexString(firstByte & 0xFF).toUpperCase() + ")");
-                // Continue reading - might be noise or timing issue
+                log("← Unexpected byte: " + controlCharName(firstByte));
             }
         }
         
-        // Reset socket timeout for listening mode
+        // Reset socket timeout
         socket.setSoTimeout(1000);
         
-        // Process the complete order message
+        // Process the complete order
         if (completeMessage.length() > 0) {
             String orderMessage = completeMessage.toString();
-            log("=== COMPLETE ORDER RECEIVED ===");
-            log("Order message:");
+            log("=== ORDER RECEIVED ===");
+            log("Order message (" + orderMessage.length() + " characters):");
             
             String[] records = orderMessage.split("\\r\\n|\\r|\\n");
             for (int i = 0; i < records.length; i++) {
@@ -627,7 +563,6 @@ public class AdvancedAstmSimulator {
                 if (!record.isEmpty()) {
                     log("  " + (i+1) + ": " + record);
                     
-                    // Parse order details if O record
                     if (record.startsWith("O|")) {
                         parseOrderRecord(record);
                     }
@@ -635,7 +570,6 @@ public class AdvancedAstmSimulator {
             }
             
             log("=== ORDER PROCESSING COMPLETE ===");
-            log("Simulator would now process this order and eventually send results back");
         }
     }
     

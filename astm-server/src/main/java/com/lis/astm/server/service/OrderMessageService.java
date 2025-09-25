@@ -80,11 +80,15 @@ public class OrderMessageService {
      */
     public boolean processOrderMessage(Long messageId) {
         try {
+            log.info("🔄 Attempting to process order message {}", messageId);
+            
             // Mark as processing to prevent concurrent processing
             if (!repository.markAsProcessing(messageId)) {
-                log.debug("⏭️ Message {} already being processed or not in PENDING state", messageId);
+                log.warn("⏭️ Message {} already being processed or not in PENDING state", messageId);
                 return false;
             }
+            
+            log.info("✅ Successfully marked message {} as PROCESSING", messageId);
             
             // Get the message
             OrderMessage orderMessage = repository.findById(messageId)
@@ -95,24 +99,30 @@ public class OrderMessageService {
                 return false;
             }
             
+            log.info("📄 Retrieved order message {} for instrument {}", 
+                     orderMessage.getMessageId(), orderMessage.getInstrumentName());
+
             return processOrderMessage(orderMessage);
             
         } catch (Exception e) {
             log.error("❌ Error processing order message {}: {}", messageId, e.getMessage(), e);
             return false;
         }
-    }
-    
-    /**
+    }    /**
      * Internal method to process an order message
      */
     private boolean processOrderMessage(OrderMessage orderMessage) {
         String instrumentName = orderMessage.getInstrumentName();
         
         try {
+            log.info("🔄 Processing order message {} for instrument {}", 
+                     orderMessage.getMessageId(), instrumentName);
+            
             // Parse the ASTM message from JSON
             AstmMessage astmMessage = objectMapper.readValue(
                     orderMessage.getMessageContent(), AstmMessage.class);
+            
+            log.info("📝 Successfully parsed ASTM message for instrument {}", instrumentName);
             
             // Get connection handler
             InstrumentConnectionHandler connectionHandler = 
@@ -125,6 +135,8 @@ public class OrderMessageService {
                 return false;
             }
             
+            log.info("🔗 Found connection handler for instrument {}", instrumentName);
+            
             if (!connectionHandler.isConnected()) {
                 log.warn("📡 Instrument {} not connected (message {})", 
                          instrumentName, orderMessage.getMessageId());
@@ -132,14 +144,21 @@ public class OrderMessageService {
                 return false;
             }
             
+            log.info("✅ Instrument {} is connected", instrumentName);
+            
             // Check for collision - instrument busy
             if (connectionHandler.isBusy()) {
-                log.info("⏳ Instrument {} busy, scheduling retry (message {})", 
-                         instrumentName, orderMessage.getMessageId());
+                log.info("⏳ Instrument {} busy (state: {}), scheduling retry (message {})", 
+                         instrumentName, connectionHandler.getProtocolStateMachine().getCurrentState(), 
+                         orderMessage.getMessageId());
                 scheduleRetry(orderMessage, collisionRetryDelayMinutes, 
                             "Instrument busy: " + connectionHandler.getProtocolStateMachine().getCurrentState());
                 return false;
             }
+            
+            log.info("🎯 Instrument {} is ready (state: {}), sending message {}", 
+                     instrumentName, connectionHandler.getProtocolStateMachine().getCurrentState(),
+                     orderMessage.getMessageId());
             
             // Send the message
             boolean success = connectionHandler.sendMessage(astmMessage);

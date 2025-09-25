@@ -1,0 +1,65 @@
+{
+  "messageType": "ORDER",
+  "instrumentName": "TEST_INSTRUMENT",
+  "headerRecord": {
+    "recordType": "H",
+    "delimiters": "|\\^&",
+    "senderName": "LIS^INFINITY^1.0^SERVER001",
+    "processingId": "P",
+    "versionNumber": "LIS2-A",
+    "dateTime": "20250925203500"
+  },
+  "patientRecord": {
+    "recordType": "P",
+    "sequenceNumber": 1,
+    "practiceAssignedPatientId": "PAT001",
+    "patientName": "SMITH^JOHN^A^^MR",
+    "birthDate": "19900515000000",
+    "patientSex": "M"
+  },
+  "orderRecords": [
+    {
+      "recordType": "O",
+      "sequenceNumber": 1,
+      "specimenId": "SID101",
+      "instrumentSpecimenId": "",
+      "universalTestId": "ABO",
+      "priority": "",
+      "requestedDateTime": "20250925203500",
+      "specimenCollectionDateTime": null,
+      "collectionEndTime": null,
+      "collectionVolume": "",
+      "collectorId": "",
+      "actionCode": "N",
+      "dangerCode": "",
+      "relevantClinicalInfo": "",
+      "dateTimeSpecimenReceived": null,
+      "specimenDescriptor": "CENTBLOOD",
+      "orderingPhysician": "",
+      "physicianPhoneNumber": "",
+      "userField1": "",
+      "userField2": "",
+      "laboratoryField1": "",
+      "laboratoryField2": "",
+      "dateTimeResultsReported": null,
+      "instrumentCharge": "",
+      "sectionId": "",
+      "reportTypes": "",
+      "reservedField": "",
+      "locationOfSpecimenCollection": "",
+      "nosocomialInfectionFlag": "",
+      "specimenService": "",
+      "institution": ""
+    }
+  ],
+  "resultRecords": [],
+  "queryRecords": [],
+  "mResultRecords": [],
+  "terminatorRecord": {
+    "recordType": "L",
+    "sequenceNumber": null,
+    "terminationCode": "",
+    "messageDateTime": "20250925203500"
+  },
+  "rawMessage": "H|\\^&|||LIS^INFINITY^1.0^SERVER001|||||||P|LIS2-A|20250925203500\r\nP|1|PAT001||SMITH^JOHN^A^^MR|19900515000000|M\r\nO|1|SID101||ABO|||||||N||||CENTBLOOD\r\nL||\r\n"
+}
