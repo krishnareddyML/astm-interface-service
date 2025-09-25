@@ -1,0 +1,66 @@
+{
+  "headerRecord": {
+    "recordType": "H",
+    "delimiters": "\\^&|||",
+    "senderId": "OCD^VISION^5.14.0^OrderServer",
+    "receiverId": "",
+    "dateTime": "20240925120000",
+    "version": "LIS2-A",
+    "processingId": "P"
+  },
+  "patientRecord": {
+    "recordType": "P",
+    "sequenceNumber": 1,
+    "patientId": "PID789456",
+    "alternatePatientId": "ALT789456",
+    "patientName": "TestPatient^OrderReceive^Test",
+    "patientSex": "M",
+    "patientBirthdate": "19850315000000",
+    "physicianId": "DOC123"
+  },
+  "orderRecords": [
+    {
+      "recordType": "O",
+      "sequenceNumber": 1,
+      "specimenId": "SPEC123456789",
+      "instrumentSpecimenId": "",
+      "universalTestId": "^^^CBC^",
+      "priority": "R",
+      "requestedDateTime": "20240925120000",
+      "specimenCollectionDateTime": "20240925115500",
+      "collectorsUserId": "COLLECTOR01",
+      "actionCode": "N",
+      "dangerCode": "",
+      "relevantClinicalInfo": "",
+      "specimenReceivedDateTime": "20240925115800",
+      "specimenDescriptor": "BLOOD",
+      "orderingPhysician": "DR_SMITH",
+      "physicianTelephoneNumber": "555-0123",
+      "userField1": "",
+      "userField2": "",
+      "laboratoryField1": "",
+      "laboratoryField2": "",
+      "reportDateTime": "20240925120000",
+      "instrumentChargeToComputerSystem": "",
+      "instrumentSectionId": "HEMATOLOGY",
+      "reportTypes": "F",
+      "reserved": "",
+      "locationOrWardOfSpecimenCollection": "WARD_A",
+      "nosocomial": "",
+      "specimenService": "",
+      "specimenInstitution": "TEST_HOSPITAL"
+    }
+  ],
+  "resultRecords": [],
+  "queryRecords": [],
+  "mResultRecords": [],
+  "terminatorRecord": {
+    "recordType": "L",
+    "sequenceNumber": 1,
+    "terminationCode": "N",
+    "errorText": ""
+  },
+  "messageType": "ORDER",
+  "instrumentName": "OrthoVision",
+  "rawMessage": "H|\\^&|||OCD^VISION^5.14.0^OrderServer|||||||P|LIS2-A|20240925120000\rP|1|PID789456||ALT789456|TestPatient^OrderReceive^Test||19850315000000|M||||DOC123\rO|1|SPEC123456789||^^^CBC^|R|20240925120000||||||N|||||||BLOOD|DR_SMITH|555-0123|||||||20240925120000||HEMATOLOGY|F||WARD_A||\rL|1|N||"
+}

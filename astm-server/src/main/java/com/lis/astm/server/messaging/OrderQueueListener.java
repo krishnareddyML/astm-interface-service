@@ -25,11 +25,26 @@ public class OrderQueueListener {
     private final ObjectMapper objectMapper;
 
     /**
-     * Process incoming order messages from RabbitMQ
+     * Process incoming order messages from RabbitMQ (byte array version)
+     * RabbitMQ often delivers messages as byte arrays
+     * @param messageBytes JSON message as byte array
+     */
+    //@RabbitListener(queues = "${lis.messaging.order-queue-name:#{null}}")
+    public void handleOrderMessage(byte[] messageBytes) {
+        try {
+            String message = new String(messageBytes, java.nio.charset.StandardCharsets.UTF_8);
+            log.info("📨 Received order message from queue (byte array): {}", message);
+            handleOrderMessage(message);
+        } catch (Exception e) {
+            log.error("❌ Error converting byte array message to string", e);
+        }
+    }
+
+    /**
+     * Process incoming order messages from RabbitMQ (string version)
      * New approach: Save to database first, then attempt immediate processing
      * @param message JSON message containing order information
      */
-    //@RabbitListener(queues = "${lis.messaging.order-queue-name:#{null}}")
     public void handleOrderMessage(String message) {
         try {
             log.info("📨 Received order message from queue: {}", message);
