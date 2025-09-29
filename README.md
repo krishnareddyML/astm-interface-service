@@ -1,218 +1,796 @@
-# ASTM Interface Service - Production-Ready Version
+# ASTM Interface Service - Complete Laboratory Integration Solution
 
-## Overview
+## 🔬 Overview
 
-This is a **production-hardened, enterprise-grade ASTM E1381 Interface Service** designed for reliable laboratory instrument communication. The service has been comprehensively refactored to address critical issues discovered during extensive real-world testing and is now fully ready for production deployment.
+This is a **production-grade, enterprise-ready ASTM E1381/E1394 Interface Service** designed for reliable bidirectional communication between laboratory instruments and Laboratory Information Systems (LIS). The service provides a complete solution for ASTM protocol implementation with comprehensive model support, server capabilities, testing tools, and deployment options.
 
-## Key Production Features
+## 📋 Table of Contents
 
-### 🔧 **Thread-Safe Architecture**
-- **Synchronized Protocol State Machine**: All network I/O operations are thread-safe, preventing race conditions between main handlers and keep-alive services
-- **Graceful Connection Management**: Proper coordination between connection handlers and keep-alive threads
-- **Fault Isolation**: Each instrument connection runs in its own isolated thread
+- [Project Structure](#project-structure)
+- [Module Architecture](#module-architecture)
+- [ASTM Protocol Support](#astm-protocol-support)
+- [Quick Start Guide](#quick-start-guide)
+- [Development Environment](#development-environment)
+- [Production Deployment](#production-deployment)
+- [Windows Service Installation](#windows-service-installation)
+- [Database Configuration](#database-configuration)
+- [Testing & Validation](#testing--validation)
+- [Monitoring & Maintenance](#monitoring--maintenance)
+- [Performance Tuning](#performance-tuning)
+- [Troubleshooting](#troubleshooting)
 
-### 🔄 **Robust Keep-Alive System**
-- **Complete Protocol Compliance**: Keep-alive messages use full ASTM protocol sequence (ENQ → ACK → frames → EOT)
-- **6-Minute Socket Timeout**: Optimized for persistent connections with proper timeout handling
-- **Automatic Stale Connection Detection**: Differentiates between clean disconnects and network timeouts
+## 🏗️ Project Structure
 
-### 📡 **Advanced Message Handling**
-- **Multi-Frame Reassembly**: Correctly handles messages spanning multiple frames with proper newline preservation
-- **ETB/ETX Processing**: Accurate intermediate vs. final frame detection
-- **Checksum Validation**: Complete frame integrity verification
+```
+astm-interface-service/
+├── 📦 astm-model/                 # Core ASTM message models & data structures
+├── 🌐 astm-server/               # Spring Boot service (main deployable)  
+├── 🖥️  astm-parser-swing/        # GUI testing tool for ASTM messages
+├── 🔧 instrument-simulator/       # Network simulator for testing
+├── 📄 pom.xml                    # Parent Maven configuration
+└── 📖 README.md                  # This comprehensive guide
+```
 
-### 🛡️ **Production Resilience**
-- **Graceful Loop Termination**: No more infinite loops on instant disconnects
-- **Comprehensive Error Handling**: Robust error recovery for all network scenarios
-- **Connection Pool Management**: Efficient resource utilization and cleanup
+## 🧩 Module Architecture
 
-## Quick Start
+### 1. **astm-model** 📦
+**Core Data Models & Message Structures**
+- **Purpose**: Shared ASTM E1394 compliant data models
+- **Key Components**:
+  - `AstmMessage` - Complete message container
+  - `HeaderRecord` (H) - Message headers and session info
+  - `PatientRecord` (P) - Patient demographics
+  - `OrderRecord` (O) - Test orders and specimen data  
+  - `ResultRecord` (R) - Test results and analysis
+  - `QueryRecord` (Q) - Information requests
+  - `MResultRecord` (M) - ORTHO Vision specific results
+  - `TerminatorRecord` (L) - Message termination
+- **Features**:
+  - Jackson JSON serialization support
+  - ASTM field validation
+  - Lombok-based clean code generation
+  - Composite field parsing utilities
+
+### 2. **astm-server** 🌐
+**Main Spring Boot Service (Production Deployment)**
+- **Purpose**: Core ASTM interface service for production use
+- **Architecture**: Thread-safe, production-hardened TCP server
+- **Key Features**:
+  - **Multi-instrument Support**: Concurrent connections per instrument
+  - **Database Integration**: SQL Server with message persistence
+  - **Message Queuing**: RabbitMQ integration for LIS communication
+  - **REST APIs**: Monitoring and management endpoints
+  - **Spring Profiles**: Development, staging, and production configs
+  - **Windows Service Ready**: Can be deployed as Windows service
+
+#### Core Components:
+- `ASTMServer` - Main TCP server with connection management
+- `InstrumentConnectionHandler` - Per-connection message processing
+- `ASTMProtocolStateMachine` - Thread-safe protocol implementation
+- `InstrumentDriver` interface - Pluggable instrument-specific drivers
+- Repository layer for database persistence
+- Service layer for business logic
+
+### 3. **astm-parser-swing** 🖥️
+**Desktop GUI Testing Tool**
+- **Purpose**: Visual ASTM message parsing and analysis
+- **Technology**: Java Swing desktop application
+- **Features**:
+  - Paste raw ASTM messages for parsing
+  - Tabbed view of all record types
+  - Field-by-field analysis with ASTM specification details
+  - Visual validation of message structure
+  - Export capabilities for testing documentation
+
+### 4. **instrument-simulator** 🔧  
+**Network Testing Simulator**
+- **Purpose**: Simulate laboratory instruments for testing
+- **Features**:
+  - JSON-driven test case definitions
+  - Dynamic menu generation from test cases
+  - Multi-frame message transmission with ETB/ETX
+  - Order reception from server
+  - Keep-alive message simulation
+  - Network timeout and error simulation
+
+## 🧬 ASTM Protocol Support
+
+### Supported Record Types
+| Record | Type | Description | Implementation Status |
+|--------|------|-------------|---------------------|
+| **H** | Header | Session establishment & identification | ✅ Complete |
+| **P** | Patient | Demographics & identification | ✅ Complete |
+| **O** | Order | Test orders & specimen information | ✅ Complete |
+| **R** | Result | Test results & analysis data | ✅ Complete |
+| **Q** | Query | Information requests | ✅ Complete |
+| **M** | M-Result | ORTHO Vision specific results | ✅ Complete |
+| **L** | Terminator | Message completion | ✅ Complete |
+
+### Protocol Features
+- ✅ **Multi-frame messages** with ETB/ETX handling
+- ✅ **Checksum validation** for data integrity
+- ✅ **Keep-alive mechanism** with 6-minute timeouts
+- ✅ **Bidirectional communication** (LIS ↔ Instrument)
+- ✅ **Thread-safe operations** for concurrent connections
+- ✅ **Graceful error handling** and recovery
+
+## 🚀 Quick Start Guide
 
 ### Prerequisites
-- Java 17 or higher
-- Maven 3.6 or higher
-
-### Build and Run
-
 ```bash
-# Build the entire project
+# Required Software
+Java 8
+Maven 3.6 or higher
+SQL Server 2019+ (for production)
+Git for version control
+
+# Optional for full features
+RabbitMQ 3.8+ (for message queuing)
+Visual Studio Code (recommended IDE)
+```
+
+### 1. Build the Complete Project
+```powershell
+# Clone and build all modules
+git clone <repository-url>
+cd astm-interface-service
+
+# Build all modules (creates executable JARs)
 mvn clean package
 
-# Run the ASTM Server
+# Verify build artifacts
+ls -la */target/*.jar
+```
+
+### 2. Quick Test with Simulator
+```powershell
+# Terminal 1: Start ASTM Server (local profile)
 cd astm-server
 mvn spring-boot:run
 
-# Run the Instrument Simulator (separate terminal)
+# Terminal 2: Start Instrument Simulator  
 cd instrument-simulator
 java -jar target/instrument-simulator.jar
+
+# Terminal 3: Test ASTM Message Parser
+cd astm-parser-swing
+mvn exec:exec
 ```
 
-### Configuration
+### 3. Test ASTM Message Flow
+```powershell
+# In simulator, select option 2: "Send Full Result Message"
+# Server will receive, parse, and log the message
+# Check server logs for processing confirmation
+```
 
-Edit `astm-server/src/main/resources/application.yml`:
+## 🛠️ Development Environment
 
+### IDE Setup (VS Code Recommended)
+```json
+// .vscode/settings.json
+{
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.compile.nullAnalysis.mode": "automatic",
+    "spring-boot.ls.problem.application-properties.enabled": true,
+    "java.format.settings.url": "eclipse-formatter.xml"
+}
+```
+
+### Local Development Configuration
+
+#### Database Setup (Development)
+```sql
+-- Create database
+CREATE DATABASE [ASTM_Interface_Dev]
+GO
+
+-- Create tables (auto-created by application)
+USE [ASTM_Interface_Dev]
+GO
+```
+
+#### Application Properties
 ```yaml
-astm:
+# astm-server/src/main/resources/application-local.yml
+spring:
+  profiles:
+    active: local
+  datasource:
+    url: jdbc:sqlserver://localhost:1433;databaseName=ASTM_Interface_Dev;trustServerCertificate=true
+    username: sa
+    password: your_password
+    
+lis:
   instruments:
-    - name: "OrthoVision"
+    - name: OrthoVision
       port: 9001
       enabled: true
-      maxConnections: 5
-      keepAliveIntervalMinutes: 5
-      driverClassName: "com.lis.astm.server.driver.impl.OrthoVisionDriver"
+      driverClassName: com.lis.astm.server.driver.impl.OrthoVisionDriver
+  messaging:
+    enabled: true  # Enable for database-backed message processing
 ```
 
-## Production Fixes Applied
+### Running Development Services
+```powershell
+# Start each module for development
 
-### 🚨 **Critical Bug Fixes**
+# 1. ASTM Server (main service)
+cd astm-server
+mvn spring-boot:run -Dspring-boot.run.profiles=local
 
-#### 1. **Infinite Loop on Instant Disconnect**
-- **Problem**: When clients connected and immediately disconnected, handlers entered infinite loops
-- **Solution**: `handleIncomingMessages()` now returns boolean to signal graceful termination
-- **Files**: `InstrumentConnectionHandler.java`
+# 2. Instrument Simulator (testing)
+cd instrument-simulator  
+mvn exec:java -Dexec.mainClass="com.lis.astm.simulator.AdvancedAstmSimulator"
 
-#### 2. **Keep-Alive Race Condition**
-- **Problem**: Main handler and keep-alive threads accessed socket simultaneously
-- **Solution**: All `ASTMProtocolStateMachine` methods are now synchronized
-- **Files**: `ASTMProtocolStateMachine.java`, `AstmKeepAliveService.java`
-
-#### 3. **Incorrect Idle Connection Timeouts**
-- **Problem**: Healthy idle connections were dropped due to `FRAME_TIMEOUT`
-- **Solution**: Removed `FRAME_TIMEOUT`, increased socket timeout to 6 minutes
-- **Files**: `ASTMServer.java`, `ASTMProtocolStateMachine.java`
-
-#### 4. **Multi-Frame Message Corruption**
-- **Problem**: Messages spanning multiple frames lost record boundaries
-- **Solution**: Proper newline insertion between reassembled frames
-- **Files**: `ASTMProtocolStateMachine.java`
-
-### 🔧 **Enhanced Components**
-
-#### **ASTMServer.java**
-- Socket timeout increased to 360,000ms (6 minutes)
-- Enhanced connection pooling and resource management
-- Comprehensive status monitoring APIs
-
-#### **InstrumentConnectionHandler.java**  
-- Graceful loop termination with boolean return logic
-- Enhanced error handling and fault isolation
-- Proper cleanup sequencing for all resources
-
-#### **ASTMProtocolStateMachine.java**
-- Complete thread safety with synchronized methods
-- Robust timeout handling using socket's built-in mechanisms
-- Accurate multi-frame message reassembly with newline preservation
-- Proper differentiation between clean disconnects and timeouts
-
-#### **AstmKeepAliveService.java**
-- Full ASTM protocol compliance for keep-alive messages
-- Synchronized coordination with main connection handlers
-- Comprehensive failure tracking and recovery logic
-- Enhanced monitoring and statistics
-
-#### **InstrumentSimulator.java**
-- Realistic one-record-per-frame transmission with ETB/ETX
-- Improved timeout handling for keep-alive exchanges
-- Enhanced error recovery and resilience testing
-
-## Testing Scenarios
-
-The refactored system has been validated against these critical scenarios:
-
-### ✅ **Instant Disconnect Test**
-```bash
-# Simulator connects and immediately disconnects
-# Result: Handler terminates gracefully, no infinite loop
+# 3. ASTM Parser GUI (message analysis)
+cd astm-parser-swing
+mvn exec:java -Dexec.mainClass="com.lis.astm.swing.AstmParserSwingApp"
 ```
 
-### ✅ **Idle Persistent Connection Test**  
-```bash
-# Simulator sends message then stays connected idle
-# Result: Connection maintained for 6+ minutes with keep-alive
+## 🏭 Production Deployment
+
+### Build Production Artifacts
+```powershell
+# Build with production profile
+mvn clean package -Pprod
+
+# Create deployable WAR (embedded Tomcat)
+cd astm-server
+mvn spring-boot:repackage
+
+# Artifacts created:
+# astm-server/target/astm-server-1.0.0.jar (executable JAR)
+# instrument-simulator/target/instrument-simulator.jar  
 ```
 
-### ✅ **Keep-Alive Coordination Test**
-```bash
-# Server sends keep-alive while client is idle
-# Result: No race conditions, proper protocol exchange
+### Production Configuration
+
+#### Environment Variables
+```powershell
+# Required production environment variables
+set SPRING_PROFILES_ACTIVE=prod
+set DB_HOST=prod-sql-server.company.com
+set DB_USERNAME=astm_service_user  
+set DB_PASSWORD=SecurePassword123!
+set RABBITMQ_HOST=prod-rabbitmq.company.com
+set RABBITMQ_USERNAME=astm_queue_user
+set RABBITMQ_PASSWORD=QueuePassword456!
+set SERVER_PORT=8080
 ```
 
-### ✅ **Multi-Frame Message Test**
-```bash
-# Simulator sends one record per frame with ETB/ETX
-# Result: Server correctly reassembles with preserved newlines
-```
-
-## Architecture
-
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Instrument    │    │  ASTM Interface  │    │   Laboratory    │
-│   (Simulator)   │◄──►│     Service      │◄──►│  Information    │
-│                 │    │                  │    │     System      │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                              │
-                              │
-                    ┌─────────▼─────────┐
-                    │  Message Queues   │
-                    │ (RabbitMQ/ActiveMQ)│
-                    └───────────────────┘
-```
-
-## Production Deployment
-
-### Environment Configuration
-
-**Development**:
+#### Production application.yml
 ```yaml
-astm.instruments[0].keepAliveIntervalMinutes: 1  # Frequent for testing
-logging.level.com.lis.astm: DEBUG
+# astm-server/src/main/resources/application-prod.yml
+spring:
+  datasource:
+    url: jdbc:sqlserver://${DB_HOST}:1433;databaseName=ASTM_Interface_Prod;encrypt=true
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 20
+      connection-timeout: 30000
+
+lis:
+  instruments:
+    - name: OrthoVision
+      port: 9001
+      enabled: true
+      maxConnections: 10
+      connectionTimeoutSeconds: 60
+  messaging:
+    enabled: true
+    retry:
+      max-attempts: 10
+      collision-delay-minutes: 30
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /astm-interface
 ```
 
-**Production**:
+### Production Deployment Options
+
+#### Option 1: Standalone JAR Deployment
+```powershell
+# Copy JAR to production server
+copy astm-server\target\astm-server-1.0.0.jar D:\Applications\ASTM-Interface\
+
+# Create application directory structure
+mkdir D:\Applications\ASTM-Interface\config
+mkdir D:\Applications\ASTM-Interface\logs
+
+# Run as standalone application
+cd D:\Applications\ASTM-Interface
+java -jar -Xmx2g -Dspring.profiles.active=prod astm-server-1.0.0.jar
+```
+
+#### Option 2: Windows Service Deployment (Recommended)
+```powershell
+# Install as Windows Service using NSSM or similar
+# See "Windows Service Installation" section below
+```
+
+## 🪟 Windows Service Installation
+
+### Method 1: Using NSSM (Non-Sucking Service Manager)
+
+#### Install NSSM
+```powershell
+# Download NSSM from https://nssm.cc/download
+# Extract to C:\Tools\nssm\
+
+# Add to system PATH
+$env:Path += ";C:\Tools\nssm\win64"
+```
+
+#### Create Windows Service
+```powershell
+# Create service configuration
+nssm install "ASTM Interface Service"
+
+# Configure service parameters
+nssm set "ASTM Interface Service" Application "C:\Program Files\Java\jdk-1.8\bin\java.exe"
+nssm set "ASTM Interface Service" AppParameters "-jar D:\Applications\ASTM-Interface\astm-server-1.0.0.jar"
+nssm set "ASTM Interface Service" AppDirectory "D:\Applications\ASTM-Interface"
+
+# Set environment variables
+nssm set "ASTM Interface Service" AppEnvironmentExtra "SPRING_PROFILES_ACTIVE=prod"
+nssm set "ASTM Interface Service" AppEnvironmentExtra "DB_HOST=your-sql-server"
+nssm set "ASTM Interface Service" AppEnvironmentExtra "DB_USERNAME=astm_user"
+nssm set "ASTM Interface Service" AppEnvironmentExtra "DB_PASSWORD=your_password"
+
+# Configure service properties
+nssm set "ASTM Interface Service" DisplayName "ASTM Interface Service"  
+nssm set "ASTM Interface Service" Description "Laboratory ASTM E1394 Interface Service"
+nssm set "ASTM Interface Service" Start SERVICE_AUTO_START
+
+# Set up logging
+nssm set "ASTM Interface Service" AppStdout "D:\Applications\ASTM-Interface\logs\service-out.log"
+nssm set "ASTM Interface Service" AppStderr "D:\Applications\ASTM-Interface\logs\service-err.log"
+```
+
+#### Service Management
+```powershell
+# Start service
+net start "ASTM Interface Service"
+# or
+nssm start "ASTM Interface Service"
+
+# Stop service  
+net stop "ASTM Interface Service"
+# or  
+nssm stop "ASTM Interface Service"
+
+# Check service status
+sc query "ASTM Interface Service"
+
+# View service configuration
+nssm edit "ASTM Interface Service"
+```
+
+### Method 2: PowerShell Service Creation
+```powershell
+# Create service directly with PowerShell
+$serviceName = "ASTMInterfaceService" 
+$jarPath = "D:\Applications\ASTM-Interface\astm-server-1.0.0.jar"
+$javaPath = "C:\Program Files\Java\jdk-1.8\bin\java.exe"
+$workingDir = "D:\Applications\ASTM-Interface"
+
+# Create Windows service
+New-Service -Name $serviceName -BinaryPathName "`"$javaPath`" -jar `"$jarPath`"" -DisplayName "ASTM Interface Service" -StartupType Automatic -Description "Laboratory ASTM Interface Service"
+
+# Set service to run in specific directory  
+sc.exe config $serviceName binPath= "`"$javaPath`" -Dspring.profiles.active=prod -jar `"$jarPath`""
+```
+
+### Service Configuration File
+Create `D:\Applications\ASTM-Interface\service.bat`:
+```batch
+@echo off
+cd /d "D:\Applications\ASTM-Interface"
+set SPRING_PROFILES_ACTIVE=prod
+set DB_HOST=your-sql-server
+set DB_USERNAME=astm_user  
+set DB_PASSWORD=your_password
+
+"C:\Program Files\Java\jdk-1.8\bin\java.exe" ^
+    -Xmx2g ^
+    -Dspring.profiles.active=prod ^
+    -jar astm-server-1.0.0.jar
+```
+
+## 🗄️ Database Configuration
+
+### SQL Server Setup
+
+#### 1. Database Creation
+```sql
+-- Create database
+CREATE DATABASE [ASTM_Interface_Prod]
+ON (
+    NAME = 'ASTM_Interface_Data',
+    FILENAME = 'C:\ASTM_Data\ASTM_Interface_Prod.mdf',
+    SIZE = 500MB,
+    MAXSIZE = 10GB,
+    FILEGROWTH = 50MB
+)
+LOG ON (
+    NAME = 'ASTM_Interface_Log',  
+    FILENAME = 'C:\ASTM_Data\ASTM_Interface_Prod_Log.ldf',
+    SIZE = 100MB,
+    MAXSIZE = 2GB,
+    FILEGROWTH = 10MB
+)
+GO
+```
+
+#### 2. Service Account Setup
+```sql
+-- Create service login and user
+USE [master]
+GO
+CREATE LOGIN [astm_service_user] WITH PASSWORD = 'SecurePassword123!', 
+    DEFAULT_DATABASE = [ASTM_Interface_Prod],
+    CHECK_EXPIRATION = OFF,
+    CHECK_POLICY = OFF
+GO
+
+USE [ASTM_Interface_Prod]  
+GO
+CREATE USER [astm_service_user] FOR LOGIN [astm_service_user]
+GO
+ALTER ROLE [db_datareader] ADD MEMBER [astm_service_user]
+ALTER ROLE [db_datawriter] ADD MEMBER [astm_service_user]
+ALTER ROLE [db_ddladmin] ADD MEMBER [astm_service_user]
+GO
+```
+
+#### 3. Tables (Auto-created by Application)
+The application automatically creates these tables:
+```sql
+-- ASTMServerMessages - Incoming messages from instruments  
+-- ASTMOrderMessages - Outgoing orders to instruments
+-- (Schema managed by Spring Boot + JDBC)
+```
+
+#### 4. Connection String Examples
 ```yaml
-astm.instruments[0].keepAliveIntervalMinutes: 5  # Standard interval
-logging.level.com.lis.astm: INFO
+# Local Development
+spring.datasource.url: jdbc:sqlserver://localhost:1433;databaseName=ASTM_Interface_Dev;trustServerCertificate=true
+
+# Production (with encryption)
+spring.datasource.url: jdbc:sqlserver://prod-sql.company.com:1433;databaseName=ASTM_Interface_Prod;encrypt=true;trustServerCertificate=false
+
+# Production (Azure SQL)  
+spring.datasource.url: jdbc:sqlserver://astm-sql-server.database.windows.net:1433;databaseName=ASTM_Interface_Prod;encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30
 ```
 
-### Monitoring
+## 🧪 Testing & Validation
 
-The service provides comprehensive monitoring endpoints:
+### Unit Testing
+```powershell
+# Run all unit tests
+mvn test
 
-- `GET /api/astm/status` - Overall service status
-- `GET /api/astm/connections` - Active connection details  
-- `GET /api/astm/keepalive` - Keep-alive statistics
+# Run tests with coverage
+mvn test jacoco:report
 
-### Performance Characteristics
+# Run specific module tests  
+cd astm-model
+mvn test
 
-- **Concurrent Connections**: Up to 64 per instrument (configurable)
-- **Message Throughput**: 1000+ messages/minute per connection
-- **Memory Usage**: ~50MB base + 2MB per active connection
-- **Network Timeouts**: 6-minute idle, 15-second ACK wait
+cd astm-server
+mvn test
+```
 
-## Contributing
+### Integration Testing
 
-When contributing to this production codebase:
+#### 1. ASTM Message Parser Testing
+```powershell
+# Launch GUI parser
+cd astm-parser-swing  
+mvn exec:java
 
-1. **Thread Safety**: All shared resources must be properly synchronized
-2. **Error Handling**: Comprehensive exception handling with graceful degradation
-3. **Testing**: Include unit tests for all network timeout scenarios
-4. **Documentation**: Update this README for any architectural changes
+# Test with sample ASTM message:
+H|\^&|||OCD^VISION^5.14.0^VISION|||||||P|LIS2-A|20241025120000
+P|1|PAT001||SMITH^JOHN^A^^MR|19900515000000|M||||||||DOC123
+O|1|SID101||^^^ABO|||||||N||||CENTBLOOD  
+R|1|^^^ABO^|A+|||||||||||20241025120000||VISION001
+L|1|N
+```
 
-## License
+#### 2. Network Communication Testing  
+```powershell
+# Terminal 1: Start server
+cd astm-server
+mvn spring-boot:run -Dspring.profiles.active=local
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+# Terminal 2: Start simulator
+cd instrument-simulator
+java -jar target/instrument-simulator.jar
 
-## Production Support
+# In simulator:
+# 1. Select "Send Full Result Message"  
+# 2. Select "Listen for Orders from Server"
+# 3. Test various message types and error conditions
+```
 
-For production deployment support:
-- Review the `application-prod.yml` configuration
-- Monitor connection pools and keep-alive statistics
-- Implement proper logging aggregation
-- Set up health checks on the monitoring endpoints
+#### 3. Load Testing
+```powershell
+# Multiple simulator instances
+for /L %i in (1,1,10) do (
+    start java -jar instrument-simulator.jar localhost 900%i
+)
+```
+
+### Message Validation Testing
+
+#### Valid ASTM Message Examples
+```
+# Basic Result Message
+H|\^&|||Simulator|||||||P|LIS2-A|20241025120000\r
+P|1|PAT001|||PATIENT^TEST|\r  
+R|1|^^^WBC^|10.5|10^3/uL||N||F|||\r
+L|1|N\r
+
+# Order Message  
+H|\^&|||LIS|||||||P|LIS2-A|20241025120000\r
+P|1|PAT001||SMITH^JOHN^A^^MR|\r
+O|1|SID101||ABO|||||||N||||CENTBLOOD\r  
+L||\r
+```
+
+## 📊 Monitoring & Maintenance
+
+### Application Monitoring
+
+#### REST API Endpoints
+```http
+# Health check
+GET http://localhost:8080/astm-interface/actuator/health
+
+# Application info  
+GET http://localhost:8080/astm-interface/actuator/info
+
+# Metrics
+GET http://localhost:8080/astm-interface/actuator/metrics
+
+# Custom ASTM endpoints (when implemented)
+GET http://localhost:8080/astm-interface/api/astm/status
+GET http://localhost:8080/astm-interface/api/astm/connections  
+GET http://localhost:8080/astm-interface/api/astm/statistics
+```
+
+#### Log Configuration
+```yaml  
+# logback-spring.xml configuration
+logging:
+  level:
+    com.lis.astm: INFO
+    org.springframework: WARN
+    root: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: D:/Applications/ASTM-Interface/logs/astm-interface.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 30
+      total-size-cap: 1GB
+```
+
+### Database Monitoring
+```sql
+-- Monitor message processing
+SELECT Status, COUNT(*) as Count, MAX(ReceivedAt) as LastReceived
+FROM ASTMServerMessages 
+GROUP BY Status;
+
+-- Monitor order queue
+SELECT Status, COUNT(*) as Count, MAX(CreatedAt) as LastCreated  
+FROM ASTMOrderMessages
+GROUP BY Status;
+
+-- Performance monitoring
+SELECT 
+    InstrumentName,
+    COUNT(*) as MessageCount,
+    AVG(DATEDIFF(ms, ReceivedAt, ProcessedAt)) as AvgProcessingTimeMs
+FROM ASTMServerMessages 
+WHERE ProcessedAt IS NOT NULL
+    AND ReceivedAt > DATEADD(hour, -24, GETDATE())
+GROUP BY InstrumentName;
+```
+
+### System Health Checks
+```powershell
+# Windows Service Status
+Get-Service "ASTM Interface Service"
+
+# Process monitoring
+Get-Process -Name java | Where-Object {$_.ProcessName -eq "java" -and $_.MainWindowTitle -like "*astm*"}
+
+# Port connectivity
+Test-NetConnection -ComputerName localhost -Port 9001
+Test-NetConnection -ComputerName localhost -Port 8080
+
+# Log file monitoring  
+Get-Content -Path "D:\Applications\ASTM-Interface\logs\astm-interface.log" -Tail 50 -Wait
+```
+
+## ⚡ Performance Tuning
+
+### JVM Configuration
+```powershell
+# Production JVM settings
+java -Xmx2g ^
+     -Xms1g ^
+     -XX:+UseG1GC ^
+     -XX:MaxGCPauseMillis=100 ^
+     -XX:+UseStringDeduplication ^
+     -Djava.awt.headless=true ^
+     -Dspring.profiles.active=prod ^
+     -jar astm-server-1.0.0.jar
+```
+
+### Database Performance  
+```sql
+-- Index recommendations
+CREATE INDEX IX_ServerMessages_Status_ReceivedAt 
+ON ASTMServerMessages(Status, ReceivedAt);
+
+CREATE INDEX IX_OrderMessages_Status_NextRetryAt
+ON ASTMOrderMessages(Status, NextRetryAt)  
+WHERE Status IN ('PENDING', 'FAILED');
+
+-- Maintenance tasks
+-- Clean old successful messages (run weekly)
+DELETE FROM ASTMServerMessages 
+WHERE Status = 'PUBLISHED' 
+  AND PublishedAt < DATEADD(day, -30, GETDATE());
+```
+
+### Connection Pool Tuning
+```yaml
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5  
+      connection-timeout: 30000
+      idle-timeout: 300000
+      max-lifetime: 900000
+      leak-detection-threshold: 60000
+```
+
+## 🔧 Troubleshooting
+
+### Common Issues & Solutions
+
+#### 1. Service Won't Start
+```powershell  
+# Check Java version
+java -version
+
+# Verify JAR integrity
+java -jar astm-server-1.0.0.jar --version
+
+# Check port availability
+netstat -an | findstr :9001
+netstat -an | findstr :8080
+
+# Review service logs
+type D:\Applications\ASTM-Interface\logs\service-err.log
+```
+
+#### 2. Database Connection Issues
+```powershell
+# Test connection string
+sqlcmd -S server -d ASTM_Interface_Prod -U astm_service_user -P password
+
+# Check firewall settings  
+Test-NetConnection -ComputerName sql-server -Port 1433
+
+# Verify credentials
+SELECT SYSTEM_USER, USER_NAME();
+```
+
+#### 3. ASTM Communication Problems
+```powershell
+# Test instrument connectivity
+telnet instrument-ip 9001
+
+# Monitor network traffic
+netstat -an | findstr :9001
+
+# Check ASTM message format
+# Use astm-parser-swing to validate messages
+```
+
+#### 4. Memory Issues
+```powershell  
+# Monitor JVM memory usage
+jstat -gc [pid] 5s
+
+# Heap dump analysis (if needed)
+jcmd [pid] GC.run_finalization
+jcmd [pid] VM.gc
+```
+
+### Log Analysis
+
+#### Key Log Patterns to Monitor
+```bash
+# Successful message processing
+grep "Successfully processed ASTM message" astm-interface.log
+
+# Connection issues  
+grep "Connection.*failed\|Connection.*refused" astm-interface.log
+
+# Database errors
+grep "SQLException\|DataAccessException" astm-interface.log
+
+# Memory warnings
+grep "OutOfMemoryError\|GC overhead limit" astm-interface.log
+```
+
+## 📚 Additional Resources
+
+### ASTM Standards
+- **ASTM E1381-02**: Standard Specification for Low-Level Protocol  
+- **ASTM E1394-97**: Standard Specification for Transferring Information Between Clinical Laboratory Instruments
+
+### Development Tools
+- **Maven**: Build automation and dependency management
+- **Spring Boot**: Application framework and configuration  
+- **Lombok**: Code generation and boilerplate reduction
+- **Jackson**: JSON serialization and data binding
+- **HikariCP**: High-performance database connection pooling
+
+### Production Tools  
+- **NSSM**: Windows service management
+- **SQL Server Management Studio**: Database administration
+- **RabbitMQ Management**: Message queue monitoring
+- **Java Mission Control**: JVM performance monitoring
 
 ---
 
-**Version**: 2.0.0-PRODUCTION  
+## 📋 Deployment Checklist
+
+### Pre-Deployment
+- [ ] Build all artifacts with production profile
+- [ ] Database server prepared with proper permissions  
+- [ ] Environment variables configured
+- [ ] Network ports opened (9001 for ASTM, 8080 for REST API)
+- [ ] Java 1.8 installed on target server
+- [ ] Service account created for Windows service
+
+### Deployment
+- [ ] Copy JAR files to production directory
+- [ ] Create Windows service with NSSM
+- [ ] Configure service environment variables
+- [ ] Set up log rotation and monitoring
+- [ ] Test service start/stop/restart
+- [ ] Verify database connectivity
+- [ ] Test ASTM instrument communication
+
+### Post-Deployment
+- [ ] Monitor service logs for first 24 hours
+- [ ] Verify message processing statistics
+- [ ] Test failover and recovery scenarios  
+- [ ] Document any environment-specific configurations
+- [ ] Schedule maintenance tasks (log cleanup, etc.)
+
+---
+
+**Version**: 1.0.0-PRODUCTION  
 **Last Updated**: September 2025  
-**Status**: ✅ Production Ready
+**Status**: ✅ Production Ready  
+**Architecture**: Multi-module Maven project with Spring Boot  
+**Deployment**: JAR + Windows Service  
+**Database**: SQL Server with JDBC  
+**Integration**: RabbitMQ message queuing
