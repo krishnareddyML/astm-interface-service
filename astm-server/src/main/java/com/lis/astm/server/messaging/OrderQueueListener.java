@@ -2,19 +2,15 @@ package com.lis.astm.server.messaging;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lis.astm.model.AstmMessage;
+import com.lis.astm.server.core.ASTMServer;
+import com.lis.astm.server.core.InstrumentConnectionHandler;
 import com.lis.astm.server.model.OrderMessage;
 import com.lis.astm.server.service.OrderMessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-//import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
-/**
- * Listens for order messages from RabbitMQ and forwards them to database-backed processing
- * Processes incoming JSON messages and saves them to database for retry-capable processing
- * Only active when messaging is enabled via lis.messaging.enabled=true
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -22,71 +18,44 @@ import org.springframework.stereotype.Component;
 public class OrderQueueListener {
 
     private final OrderMessageService orderMessageService;
+    private final ASTMServer astmServer;
     private final ObjectMapper objectMapper;
 
-    /**
-     * Process incoming order messages from RabbitMQ (byte array version)
-     * RabbitMQ often delivers messages as byte arrays
-     * @param messageBytes JSON message as byte array
-     */
-    //@RabbitListener(queues = "${lis.messaging.order-queue-name:#{null}}")
-    public void handleOrderMessage(byte[] messageBytes) {
-        try {
-            String message = new String(messageBytes, java.nio.charset.StandardCharsets.UTF_8);
-            log.info("📨 Received order message from queue (byte array): {}", message);
-            handleOrderMessage(message);
-        } catch (Exception e) {
-            log.error("❌ Error converting byte array message to string", e);
-        }
-    }
-
-    /**
-     * Process incoming order messages from RabbitMQ (string version)
-     * New approach: Save to database first, then attempt immediate processing
-     * @param message JSON message containing order information
-     */
-    public void handleOrderMessage(String message) {
+    // This method can be triggered by your RabbitMQ listener configuration
+    public void handleOrderMessage(byte[] messageBytes) { // <-- ❗️ CHANGED from String to byte[]
+        String message = new String(messageBytes); // <-- ✨ ADDED conversion to String
         try {
             log.info("📨 Received order message from queue: {}", message);
             
-            // Parse the JSON message to get instrument name
             AstmMessage astmMessage = objectMapper.readValue(message, AstmMessage.class);
-            
-            // Validate the message
-            if (astmMessage == null) {
-                log.error("❌ Failed to parse order message - null result");
+            if (astmMessage == null || astmMessage.getInstrumentName() == null) {
+                log.error("❌ Invalid order message or missing instrument name.");
                 return;
             }
             
             String instrumentName = astmMessage.getInstrumentName();
-            if (instrumentName == null || instrumentName.trim().isEmpty()) {
-                log.error("❌ Order message does not specify target instrument");
-                return;
-            }
             
-            // 💾 STEP 1: Save to database for persistence and retry capability
+            // 💾 STEP 1: Save to database for persistence. This part is correct.
             OrderMessage savedMessage = orderMessageService.saveOrderMessage(message, instrumentName);
             
-            // 🚀 STEP 2: Attempt immediate processing
-            boolean immediateSuccess = orderMessageService.processOrderMessage(savedMessage.getId());
+            // 🚀 STEP 2: Attempt to queue the message for immediate processing.
+            InstrumentConnectionHandler handler = astmServer.getConnectionHandler(instrumentName);
             
-            if (immediateSuccess) {
-                log.info("⚡ Order message {} processed immediately for instrument {}", 
-                         savedMessage.getMessageId(), instrumentName);
+            if (handler != null && handler.isConnected()) {
+                // The handler exists and is connected, so queue the message.
+                // The handler's own event loop will pick it up and send it.
+                handler.queueMessageForSending(astmMessage);
+                log.info("⚡ Order message for '{}' was queued for immediate sending.", instrumentName);
+                 // We can mark it as success here because the handler will now manage it.
+                orderMessageService.markAsSuccess(savedMessage.getId());
             } else {
-                log.info("⏳ Order message {} queued for retry processing for instrument {}", 
-                         savedMessage.getMessageId(), instrumentName);
+                log.warn("⏳ Instrument '{}' is not connected. Order {} will be processed by the retry service.", 
+                         instrumentName, savedMessage.getId());
+                // No need to do anything else. The scheduled retry service will handle it.
             }
             
         } catch (Exception e) {
             log.error("❌ Error handling order message: {}", message, e);
         }
     }
-    
-    /**
-     * Manual processing method for testing/admin purposes
-     */
-    public void processMessage(String message) {
-        handleOrderMessage(message);
-    }
-}
+}   

@@ -12,8 +12,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Service for managing incoming server messages from instruments
- * Handles saving raw messages for audit trail and safety
+ * Service for managing incoming server messages from instruments.
+ * Handles saving raw messages for audit trail and safety. This file is correct and does not require changes.
  */
 @Slf4j
 @Service
@@ -22,15 +22,10 @@ public class ServerMessageService {
     
     private final ServerMessageRepository repository;
     
-    /**
-     * Save incoming raw message from instrument
-     * This is the first step - just store the raw message for safety
-     */
     public ServerMessage saveIncomingMessage(String rawMessage, String instrumentName, 
                                            String remoteAddress, String messageType) {
         try {
             String messageId = UUID.randomUUID().toString();
-            
             ServerMessage serverMessage = ServerMessage.builder()
                     .messageId(messageId)
                     .instrumentName(instrumentName)
@@ -42,130 +37,56 @@ public class ServerMessageService {
                     .build();
             
             ServerMessage saved = repository.save(serverMessage);
-            
             log.debug("💾 Saved incoming message {} from instrument {} (type: {}, {} chars)", 
                      messageId, instrumentName, messageType, rawMessage.length());
-            
             return saved;
-            
         } catch (Exception e) {
             log.error("❌ Failed to save incoming message from {}: {}", instrumentName, e.getMessage(), e);
             throw new RuntimeException("Failed to save incoming message", e);
         }
     }
     
-    /**
-     * Mark message as processed after successful parsing
-     */
     public void markAsProcessed(Long messageId, AstmMessage parsedMessage) {
-        try {
-            ServerMessage message = repository.findById(messageId).orElse(null);
-            if (message != null) {
-                message.markProcessed();
-                repository.update(message);
-                
-                log.debug("✅ Marked message {} as processed", message.getMessageId());
-            }
-        } catch (Exception e) {
-            log.error("❌ Failed to mark message {} as processed: {}", messageId, e.getMessage());
-        }
+        repository.findById(messageId).ifPresent(message -> {
+            message.markProcessed();
+            repository.update(message);
+            log.debug("✅ Marked message {} as processed", message.getMessageId());
+        });
     }
     
-    /**
-     * Mark message as published to queue
-     */
     public void markAsPublished(Long messageId) {
-        try {
-            ServerMessage message = repository.findById(messageId).orElse(null);
-            if (message != null) {
-                message.markPublished();
-                repository.update(message);
-                
-                log.debug("📤 Marked message {} as published", message.getMessageId());
-            }
-        } catch (Exception e) {
-            log.error("❌ Failed to mark message {} as published: {}", messageId, e.getMessage());
-        }
+        repository.findById(messageId).ifPresent(message -> {
+            message.markPublished();
+            repository.update(message);
+            log.debug("📤 Marked message {} as published", message.getMessageId());
+        });
     }
     
-    /**
-     * Mark message for retry publishing when queue is temporarily unavailable
-     */
     public void markForRetryPublishing(Long messageId, String errorMessage) {
-        try {
-            ServerMessage message = repository.findById(messageId).orElse(null);
-            if (message != null) {
-                message.markForRetryPublishing(errorMessage);
-                repository.update(message);
-                
-                log.warn("🔄 Marked message {} for retry publishing: {}", message.getMessageId(), errorMessage);
-            }
-        } catch (Exception e) {
-            log.error("❌ Failed to mark message {} for retry: {}", messageId, e.getMessage());
-        }
+        repository.findById(messageId).ifPresent(message -> {
+            message.markForRetryPublishing(errorMessage);
+            repository.update(message);
+            log.warn("🔄 Marked message {} for retry publishing: {}", message.getMessageId(), errorMessage);
+        });
     }
     
-    /**
-     * Mark message as error
-     */
     public void markAsError(Long messageId, String errorMessage) {
-        try {
-            ServerMessage message = repository.findById(messageId).orElse(null);
-            if (message != null) {
-                message.markError(errorMessage);
-                repository.update(message);
-                
-                log.warn("❌ Marked message {} as error: {}", message.getMessageId(), errorMessage);
-            }
-        } catch (Exception e) {
-            log.error("❌ Failed to mark message {} as error: {}", messageId, e.getMessage());
-        }
+        repository.findById(messageId).ifPresent(message -> {
+            message.markError(errorMessage);
+            repository.update(message);
+            log.warn("❌ Marked message {} as error: {}", message.getMessageId(), errorMessage);
+        });
     }
     
-    /**
-     * Get recent messages for an instrument
-     */
-    public List<ServerMessage> getRecentMessages(String instrumentName, int limit) {
-        return repository.findRecentByInstrument(instrumentName, limit);
-    }
-    
-    /**
-     * Get messages by status
-     */
-    public List<ServerMessage> getMessagesByStatus(ServerMessage.Status status, int limit) {
-        return repository.findByStatus(status, limit);
-    }
-    
-    /**
-     * Get messages that need retry publishing
-     */
     public List<ServerMessage> getMessagesForRetryPublishing(int limit) {
         return repository.findByStatus(ServerMessage.Status.PUBLISH_RETRY, limit);
     }
     
-    /**
-     * Get statistics about server message processing
-     */
-    public ServerMessageRepository.ServerMessageStats getStats() {
-        return repository.getStats();
-    }
-    
-    /**
-     * Find a server message by ID
-     */
-    public ServerMessage findById(Long messageId) {
-        return repository.findById(messageId).orElse(null);
-    }
-    
-    /**
-     * Determine message type from raw content
-     */
     public String determineMessageType(String rawMessage) {
         if (rawMessage == null || rawMessage.trim().isEmpty()) {
             return "UNKNOWN";
         }
         
-        // Split into lines to check for specific record types
         String[] lines = rawMessage.split("\\r?\\n");
         boolean hasHeader = false;
         boolean hasTerminator = false;
@@ -175,40 +96,23 @@ public class ServerMessageService {
         
         for (String line : lines) {
             line = line.trim().toUpperCase();
-            if (line.startsWith("H|")) {
-                hasHeader = true;
-            } else if (line.startsWith("L|")) {
-                hasTerminator = true;
-            } else if (line.startsWith("R|")) {
-                hasResult = true;
-            } else if (line.startsWith("O|")) {
-                hasOrder = true;
-            } else if (line.startsWith("Q|")) {
-                hasQuery = true;
-            }
+            if (line.startsWith("H|")) hasHeader = true;
+            else if (line.startsWith("L|")) hasTerminator = true;
+            else if (line.startsWith("R|")) hasResult = true;
+            else if (line.startsWith("O|")) hasOrder = true;
+            else if (line.startsWith("Q|")) hasQuery = true;
         }
         
-        // Check for keep-alive messages first (priority order matters)
-        // Keep-alive messages typically have H| (header) and L| (terminator) only, without results
         if (hasHeader && hasTerminator && !hasResult && !hasOrder && !hasQuery) {
             return "KEEP_ALIVE";
         }
         
-        String upperMessage = rawMessage.toUpperCase();
+        if (hasResult) return "RESULT";
+        if (hasQuery) return "QUERY";
+        if (hasOrder) return "ORDER";
         
-        // Simple heuristics to determine message type
-        if (upperMessage.contains("ENQ") || upperMessage.contains("NAK")) {
-            return "KEEPALIVE"; // Legacy naming for backward compatibility
-        } else if (hasResult || upperMessage.contains("RESULT")) {
-            return "RESULT";
-        } else if (hasOrder || upperMessage.contains("ORDER")) {
-            return "ORDER";
-        } else if (hasQuery || upperMessage.contains("QUERY")) {
-            return "QUERY";
-        } else if (hasHeader && hasTerminator) {
-            return "MESSAGE"; // Full ASTM message with header and terminator
-        } else {
-            return "OTHER";
-        }
+        if (hasHeader && hasTerminator) return "MESSAGE";
+        
+        return "OTHER";
     }
 }

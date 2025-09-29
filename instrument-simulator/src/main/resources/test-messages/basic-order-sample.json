@@ -1,6 +1,6 @@
 {
   "messageType": "ORDER",
-  "instrumentName": "CENTRIFUGE_001",
+  "instrumentName": "OrthoVision",
   "headerRecord": {
     "recordType": "H",
     "delimiters": "|\\^&"

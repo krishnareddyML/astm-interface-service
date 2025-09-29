@@ -18,39 +18,35 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Service for managing order message processing and retries
- * Handles database-backed message persistence and scheduled retry processing
+ * Service for managing the persistence and processing of outgoing order messages.
+ * This rewritten version works with the non-blocking InstrumentConnectionHandler.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "lis.messaging.enabled", havingValue = "true")
 public class OrderMessageService {
-    
+
     private final OrderMessageRepository repository;
     private final ASTMServer astmServer;
     private final ObjectMapper objectMapper;
-    
-    @Value("${lis.messaging.retry.batch-size:10}")
+
+    @Value("${lis.messaging.retry.batch-size:20}")
     private int retryBatchSize;
-    
+
     @Value("${lis.messaging.retry.max-attempts:5}")
     private int maxRetryAttempts;
-    
-    @Value("${lis.messaging.retry.collision-delay-minutes:30}")
-    private long collisionRetryDelayMinutes;
-    
-    @Value("${lis.messaging.retry.connection-delay-minutes:60}")
+
+    @Value("${lis.messaging.retry.connection-delay-minutes:5}")
     private long connectionRetryDelayMinutes;
-    
+
     /**
-     * Save incoming order message to database for processing
+     * Saves a new order message from the queue to the database with a PENDING status.
+     * This is the first step, ensuring the order is never lost.
      */
     public OrderMessage saveOrderMessage(String jsonMessage, String instrumentName) {
         try {
-            // Generate unique message ID
             String messageId = UUID.randomUUID().toString();
-            
             LocalDateTime now = LocalDateTime.now();
             OrderMessage orderMessage = OrderMessage.builder()
                     .messageId(messageId)
@@ -64,230 +60,110 @@ public class OrderMessageService {
                     .build();
             
             OrderMessage saved = repository.save(orderMessage);
-            log.info("💾 Saved order message {} for instrument {} to database", 
-                     messageId, instrumentName);
-            
+            log.info("💾 Saved order message {} for instrument '{}' to database.", messageId, instrumentName);
             return saved;
-            
         } catch (Exception e) {
-            log.error("❌ Failed to save order message to database: {}", e.getMessage(), e);
+            log.error("❌ Failed to save order message to database for instrument '{}'", instrumentName, e);
             throw new RuntimeException("Failed to save order message", e);
         }
     }
-    
+
     /**
-     * Process a specific order message by ID
+     * Marks a processed order as successful in the database.
+     */
+    public void markAsSuccess(Long messageId) {
+        repository.findById(messageId).ifPresent(msg -> {
+            msg.markSuccess();
+            repository.update(msg);
+        });
+    }
+
+    /**
+     * Attempts to process a PENDING order message from the database.
+     * It finds the instrument's connection handler and queues the message for sending.
+     * @param messageId The database ID of the order message.
+     * @return True if the message was successfully queued, false otherwise.
      */
     public boolean processOrderMessage(Long messageId) {
-        try {
-            log.info("🔄 Attempting to process order message {}", messageId);
-            
-            // Mark as processing to prevent concurrent processing
-            if (!repository.markAsProcessing(messageId)) {
-                log.warn("⏭️ Message {} already being processed or not in PENDING state", messageId);
-                return false;
-            }
-            
-            log.info("✅ Successfully marked message {} as PROCESSING", messageId);
-            
-            // Get the message
-            OrderMessage orderMessage = repository.findById(messageId)
-                    .orElse(null);
-                    
-            if (orderMessage == null) {
-                log.error("❌ Order message {} not found after marking as processing", messageId);
-                return false;
-            }
-            
-            log.info("📄 Retrieved order message {} for instrument {}", 
-                     orderMessage.getMessageId(), orderMessage.getInstrumentName());
-
-            return processOrderMessage(orderMessage);
-            
-        } catch (Exception e) {
-            log.error("❌ Error processing order message {}: {}", messageId, e.getMessage(), e);
+        OrderMessage orderMessage = repository.findById(messageId).orElse(null);
+        if (orderMessage == null) {
+            log.error("Cannot process message ID {}: not found.", messageId);
             return false;
         }
-    }    /**
-     * Internal method to process an order message
-     */
-    private boolean processOrderMessage(OrderMessage orderMessage) {
-        String instrumentName = orderMessage.getInstrumentName();
+
+        // Mark as PROCESSING to prevent other threads from picking it up.
+        if (!repository.markAsProcessing(messageId)) {
+            log.warn("Message {} is already being processed, skipping.", messageId);
+            return false;
+        }
+
+        InstrumentConnectionHandler handler = astmServer.getConnectionHandler(orderMessage.getInstrumentName());
+
+        // If the instrument is not connected, schedule a retry.
+        if (handler == null || !handler.isConnected()) {
+            log.warn("Instrument '{}' is not connected. Scheduling retry for order {}.", orderMessage.getInstrumentName(), messageId);
+            scheduleRetry(orderMessage, connectionRetryDelayMinutes, "Instrument not connected");
+            return false;
+        }
         
+        // If the instrument is busy (already sending/receiving), schedule a retry.
+        if (handler.isBusy()) {
+            log.warn("Instrument '{}' is busy. Scheduling retry for order {}.", orderMessage.getInstrumentName(), messageId);
+            scheduleRetry(orderMessage, connectionRetryDelayMinutes, "Instrument is busy");
+            return false;
+        }
+
         try {
-            log.info("🔄 Processing order message {} for instrument {}", 
-                     orderMessage.getMessageId(), instrumentName);
+            AstmMessage astmMessage = objectMapper.readValue(orderMessage.getMessageContent(), AstmMessage.class);
             
-            // Parse the ASTM message from JSON
-            AstmMessage astmMessage = objectMapper.readValue(
-                    orderMessage.getMessageContent(), AstmMessage.class);
+            // Queue the message. The handler's event loop will do the sending.
+            handler.queueMessageForSending(astmMessage);
             
-            log.info("📝 Successfully parsed ASTM message for instrument {}", instrumentName);
-            
-            // Get connection handler
-            InstrumentConnectionHandler connectionHandler = 
-                    astmServer.getConnectionHandler(instrumentName);
-            
-            if (connectionHandler == null) {
-                log.warn("🔌 No connection handler found for instrument {} (message {})", 
-                         instrumentName, orderMessage.getMessageId());
-                scheduleRetry(orderMessage, connectionRetryDelayMinutes, "No connection handler");
-                return false;
-            }
-            
-            log.info("🔗 Found connection handler for instrument {}", instrumentName);
-            
-            if (!connectionHandler.isConnected()) {
-                log.warn("📡 Instrument {} not connected (message {})", 
-                         instrumentName, orderMessage.getMessageId());
-                scheduleRetry(orderMessage, connectionRetryDelayMinutes, "Instrument disconnected");
-                return false;
-            }
-            
-            log.info("✅ Instrument {} is connected", instrumentName);
-            
-            // Check for collision - instrument busy
-            if (connectionHandler.isBusy()) {
-                log.info("⏳ Instrument {} busy (state: {}), scheduling retry (message {})", 
-                         instrumentName, connectionHandler.getProtocolStateMachine().getCurrentState(), 
-                         orderMessage.getMessageId());
-                scheduleRetry(orderMessage, collisionRetryDelayMinutes, 
-                            "Instrument busy: " + connectionHandler.getProtocolStateMachine().getCurrentState());
-                return false;
-            }
-            
-            log.info("🎯 Instrument {} is ready (state: {}), queueing message {} for sending", 
-                     instrumentName, connectionHandler.getProtocolStateMachine().getCurrentState(),
-                     orderMessage.getMessageId());
-            
-            // Queue the message for sending (non-blocking approach)
-            connectionHandler.queueMessageForSending(astmMessage);
-            
-            // Mark as successful since it's queued (delivery will be handled by the queue processor)
+            // Since the message is now queued and managed by the handler, we mark it as successful here.
             orderMessage.markSuccess();
             repository.update(orderMessage);
-            
-            log.info("✅ Successfully queued order message {} for instrument {} (attempt {})", 
-                     orderMessage.getMessageId(), instrumentName, orderMessage.getRetryCount() + 1);
+            log.info("✅ Successfully queued order {} for instrument '{}'.", messageId, orderMessage.getInstrumentName());
             return true;
-            
         } catch (Exception e) {
-            log.error("❌ Exception processing order message {} for instrument {}: {}", 
-                     orderMessage.getMessageId(), instrumentName, e.getMessage(), e);
-            scheduleRetry(orderMessage, collisionRetryDelayMinutes, "Exception: " + e.getMessage());
+            log.error("❌ Failed to process order message {}: {}", messageId, e.getMessage(), e);
+            scheduleRetry(orderMessage, connectionRetryDelayMinutes, "Processing exception");
             return false;
+        }
+    }
+
+    /**
+     * Scheduled method that runs periodically to process any PENDING orders
+     * that were not sent immediately (e.g., due to the instrument being offline).
+     */
+    @Scheduled(fixedDelayString = "${lis.messaging.retry.schedule-interval-ms:60000}") // Check every minute
+    public void processRetries() {
+        log.debug("🔄 Running scheduled task to process pending orders...");
+        List<OrderMessage> messagesToRetry = repository.findMessagesReadyForRetry(retryBatchSize);
+
+        if (messagesToRetry.isEmpty()) {
+            log.debug("✨ No pending orders to retry.");
+            return;
+        }
+
+        log.info("Found {} pending order(s) to process.", messagesToRetry.size());
+        for (OrderMessage message : messagesToRetry) {
+            processOrderMessage(message.getId());
         }
     }
     
     /**
-     * Schedule retry for failed message
+     * Updates the database record to schedule a retry for a message that couldn't be sent.
      */
     private void scheduleRetry(OrderMessage orderMessage, long delayMinutes, String reason) {
         if (orderMessage.getRetryCount() >= orderMessage.getMaxRetryAttempts()) {
-            // Max retries reached - mark as failed
             orderMessage.markFailed("Max retries reached. Last reason: " + reason);
-            repository.update(orderMessage);
-            
-            log.error("🚫 Order message {} for instrument {} permanently failed after {} attempts. Reason: {}", 
-                     orderMessage.getMessageId(), orderMessage.getInstrumentName(), 
-                     orderMessage.getMaxRetryAttempts(), reason);
-            return;
+            log.error("🚫 Order message {} for '{}' has failed permanently after {} attempts.", 
+                     orderMessage.getMessageId(), orderMessage.getInstrumentName(), orderMessage.getMaxRetryAttempts());
+        } else {
+            orderMessage.incrementRetry(delayMinutes);
+            log.warn("📅 Scheduling retry {}/{} for order {} in {} minutes. Reason: {}", 
+                     orderMessage.getRetryCount(), orderMessage.getMaxRetryAttempts(), orderMessage.getMessageId(), delayMinutes, reason);
         }
-        
-        // Schedule retry
-        orderMessage.incrementRetry(delayMinutes);
         repository.update(orderMessage);
-        
-        log.info("📅 Scheduled retry for order message {} (attempt {}/{}) in {} minutes. Reason: {}", 
-                 orderMessage.getMessageId(), 
-                 orderMessage.getRetryCount() + 1, 
-                 orderMessage.getMaxRetryAttempts() + 1,
-                 delayMinutes, reason);
-    }
-    
-    /**
-     * Scheduled method to process pending retries
-     * Runs every configurable interval to process messages ready for retry
-     */
-    @Scheduled(fixedDelayString = "${lis.messaging.retry.schedule-interval-ms:600000}") // Default 10 minutes
-    public void processRetries() {
-        try {
-            log.debug("🔄 Starting scheduled retry processing...");
-            
-            // Get messages ready for retry
-            List<OrderMessage> readyMessages = repository.findMessagesReadyForRetry(retryBatchSize);
-            
-            if (readyMessages.isEmpty()) {
-                log.debug("✨ No messages ready for retry");
-                return;
-            }
-            
-            log.info("🔄 Processing {} messages ready for retry", readyMessages.size());
-            
-            int processed = 0;
-            int successful = 0;
-            
-            for (OrderMessage message : readyMessages) {
-                try {
-                    processed++;
-                    if (processOrderMessage(message)) {
-                        successful++;
-                    }
-                } catch (Exception e) {
-                    log.error("❌ Error processing retry for message {}: {}", 
-                             message.getMessageId(), e.getMessage(), e);
-                }
-            }
-            
-            log.info("📊 Retry processing complete: {}/{} successful", successful, processed);
-            
-        } catch (Exception e) {
-            log.error("❌ Error in scheduled retry processing: {}", e.getMessage(), e);
-        }
-    }
-    
-    /**
-     * Get statistics about order message processing
-     */
-    public OrderMessageRepository.OrderMessageStats getStats() {
-        return repository.getStats();
-    }
-    
-    /**
-     * Get pending messages for a specific instrument
-     */
-    public List<OrderMessage> getPendingMessages(String instrumentName) {
-        return repository.findPendingByInstrument(instrumentName);
-    }
-    
-    /**
-     * Manual retry of a specific message (for admin interface)
-     */
-    public boolean retryMessage(Long messageId) {
-        try {
-            OrderMessage message = repository.findById(messageId).orElse(null);
-            if (message == null) {
-                log.warn("❌ Message {} not found for manual retry", messageId);
-                return false;
-            }
-            
-            if (!message.canRetry()) {
-                log.warn("❌ Message {} cannot be retried (status: {}, retries: {}/{})", 
-                         messageId, message.getStatus(), message.getRetryCount(), message.getMaxRetryAttempts());
-                return false;
-            }
-            
-            // Reset to PENDING and process immediately
-            message.setStatus(OrderMessage.Status.PENDING);
-            message.setNextRetryAt(LocalDateTime.now());
-            repository.update(message);
-            
-            log.info("🔄 Manual retry initiated for message {}", messageId);
-            return processOrderMessage(messageId);
-            
-        } catch (Exception e) {
-            log.error("❌ Error in manual retry for message {}: {}", messageId, e.getMessage(), e);
-            return false;
-        }
     }
 }

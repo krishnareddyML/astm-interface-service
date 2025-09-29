@@ -1,0 +1,22 @@
+[
+  {
+    "caseName": "Send Keep-Alive Message",
+    "caseKey": "KEEP_ALIVE",
+    "messageContent": "H|\\^&|||Simulator|||||||P|LIS2-A|${timestamp}\rL|1|N"
+  },
+  {
+    "caseName": "Send Full Result Message",
+    "caseKey": "RESULT",
+    "messageContent": "H|\\^&|||Simulator|||||||P|LIS2-A|${timestamp}\rP|1|${patientId}|||Patient^Test\rO|1|${specimenId}||^^^CBC\rR|1|^^^WBC^|10.5|10^3/uL||N||F|||\rL|1|N"
+  },
+    {
+    "caseName": "Send Patient Query Message",
+    "caseKey": "QUERY",
+    "messageContent": "H|\\^&|||Simulator|||||||P|LIS2-A|${timestamp}\rQ|1|^${specimenId}||ALL\rL|1|N"
+  },
+  {
+    "caseName": "Send LONG Result (for Frame Splitting)",
+    "caseKey": "LONG_RESULT",
+    "messageContent": "H|\\^&|||Simulator|||||||P|LIS2-A|${timestamp}\rP|1|${patientId}\rO|1|${specimenId}||^^^PANEL\rR|1|^^^GLU^|105|mg/dL\rC|1|L|I|This is a very long comment record designed to exceed the 240-character frame limit. It contains extensive details about laboratory procedures, quality control measures, technical specifications, and various reference ranges for multiple analytes, ensuring the record triggers the mandatory ETB/ETX frame splitting logic.\rL|1|N"
+  }
+]
