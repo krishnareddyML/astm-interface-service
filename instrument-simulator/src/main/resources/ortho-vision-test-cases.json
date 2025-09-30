@@ -1,0 +1,17 @@
+[
+  {
+    "caseName": "ASTM Keep-Alive Message",
+    "caseKey": "KEEP_ALIVE",
+    "messageContent": "H|\\^&|||OCD^VISION^5.14.0.47342^JNumber|||||||P|LIS2-A|20220902174004\rL||"
+  },
+  {
+    "caseName": "Host Query: Regular Test Query",
+    "caseKey": "QUERY",
+    "messageContent": "H|\\^&|||OCD^VISION^5.13.1.46935^JNumber|||||||P|LIS2-A|20210305190245\rQ|1|^SID107||||||||||O\rL||"
+  },
+    {
+    "caseName": "Host Query: Product Test Query",
+    "caseKey": "QUERY",
+    "messageContent": "H|\\^&|||OCD^VISION^5.13.1.46935^JNumber|||||||P|LIS2-A|20210305190245\rQ|1|^=W13131200096100||||||||||O\rL||"
+  }
+]

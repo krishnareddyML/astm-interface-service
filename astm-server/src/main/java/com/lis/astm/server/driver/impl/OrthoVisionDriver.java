@@ -2,16 +2,22 @@ package com.lis.astm.server.driver.impl;
 
 import com.lis.astm.model.*;
 import com.lis.astm.server.driver.InstrumentDriver;
+
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.StringJoiner;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
- * A robust and simplified implementation of the InstrumentDriver for Ortho Vision instruments.
- * This version uses helper methods to reduce code duplication and improve resilience against malformed messages.
+ * A comprehensive and robust implementation of the InstrumentDriver for Ortho Vision instruments.
+ * This rewritten version provides full support for H, P, O, R, Q, M, and L records,
+ * ensuring all relevant fields from the data models are parsed and built correctly.
  */
 @Slf4j
 public class OrthoVisionDriver implements InstrumentDriver {
@@ -19,6 +25,12 @@ public class OrthoVisionDriver implements InstrumentDriver {
     private static final String INSTRUMENT_NAME = "OrthoVision";
     private static final String ASTM_VERSION = "1394-97";
     private static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+    
+    // Delimiters from ASTM Standard
+    private static final String FIELD_DELIMITER = "|";
+    private static final String REPEAT_DELIMITER = "\\";
+    private static final String COMPONENT_DELIMITER = "^";
+    private static final String ESCAPE_DELIMITER = "&";
 
     @Override
     public AstmMessage parse(String rawMessage) throws Exception {
@@ -31,13 +43,12 @@ public class OrthoVisionDriver implements InstrumentDriver {
         astmMessage.setRawMessage(rawMessage);
         astmMessage.setInstrumentName(INSTRUMENT_NAME);
 
-        // Process each line of the message, trimming whitespace and ignoring empty lines.
+        // Process each line (record) of the message
         for (String line : rawMessage.split("\\r")) {
             String trimmedLine = line.trim();
             if (trimmedLine.isEmpty()) continue;
             
-            // Split by the '|' delimiter, preserving empty fields.
-            String[] fields = trimmedLine.split("\\|", -1);
+            String[] fields = trimmedLine.split("\\" + FIELD_DELIMITER, -1);
             if (fields.length < 1) continue;
 
             try {
@@ -55,20 +66,25 @@ public class OrthoVisionDriver implements InstrumentDriver {
                     case "R":
                         astmMessage.addResultRecord(parseResult(fields));
                         break;
+                    case "Q":
+                        astmMessage.addQueryRecord(parseQuery(fields));
+                        break;
+                    case "M":
+                        astmMessage.addMResultRecord(parseMResult(fields));
+                        break;
                     case "L":
                         astmMessage.setTerminatorRecord(parseTerminator(fields));
                         break;
-                    // Ignoring Q and M records for this simplified example, but they could be added here.
                     default:
-                        log.debug("Ignoring unsupported record type: {}", fields[0]);
+                        log.warn("Ignoring unsupported record type: {}", fields[0]);
                 }
             } catch (Exception e) {
-                log.warn("Skipping malformed record line '{}': {}", trimmedLine, e.getMessage());
+                log.error("Skipping malformed record line '{}' due to error: {}", trimmedLine, e.getMessage(), e);
             }
         }
         determineMessageType(astmMessage);
-        log.info("Successfully parsed {} message: {} order(s), {} result(s)",
-                astmMessage.getMessageType(), astmMessage.getOrderCount(), astmMessage.getResultCount());
+        log.info("Successfully parsed {} message: {} order(s), {} result(s), {} query(s), {} m-result(s)",
+                astmMessage.getMessageType(), astmMessage.getOrderCount(), astmMessage.getResultCount(), astmMessage.getQueryCount(), astmMessage.getMResultCount());
         return astmMessage;
     }
 
@@ -80,7 +96,9 @@ public class OrthoVisionDriver implements InstrumentDriver {
         log.debug("Building ASTM message for {}", INSTRUMENT_NAME);
         StringJoiner sj = new StringJoiner("\r");
 
-        sj.add(buildHeader(message.getHeaderRecord()));
+        if (message.getHeaderRecord() != null) {
+            sj.add(buildHeader(message.getHeaderRecord()));
+        }
         if (message.getPatientRecord() != null) {
             sj.add(buildPatient(message.getPatientRecord()));
         }
@@ -89,9 +107,26 @@ public class OrthoVisionDriver implements InstrumentDriver {
                 sj.add(buildOrder(order));
             }
         }
-        sj.add(buildTerminator(message.getTerminatorRecord()));
+        if (message.hasResults()) {
+            for (ResultRecord result : message.getResultRecords()) {
+                sj.add(buildResult(result));
+            }
+        }
+        if (message.hasQueries()) {
+            for (QueryRecord query : message.getQueryRecords()) {
+                sj.add(buildQuery(query));
+            }
+        }
+        if (message.hasMResults()) {
+            for (MResultRecord mResult : message.getMResultRecords()) {
+                sj.add(buildMResult(mResult));
+            }
+        }
+        if (message.getTerminatorRecord() != null) {
+            sj.add(buildTerminator(message.getTerminatorRecord()));
+        }
 
-        String result = sj.toString();
+        String result = sj.toString() + "\r";
         log.info("Successfully built ASTM message of {} characters.", result.length());
         return result;
     }
@@ -99,84 +134,254 @@ public class OrthoVisionDriver implements InstrumentDriver {
     // --- Record Parsing Methods ---
 
     private HeaderRecord parseHeader(String[] fields) {
-        HeaderRecord header = new HeaderRecord();
-        header.setDelimiters(safeGet(fields, 1));
-        header.setSenderName(safeGet(fields, 4));
-        header.setProcessingId(safeGet(fields, 11));
-        header.setVersionNumber(safeGet(fields, 12));
-        header.setDateTime(parseDateTime(safeGet(fields, 13)));
-        return header;
+        HeaderRecord h = new HeaderRecord();
+        h.setDelimiters(safeGet(fields, 1));
+        h.setSenderName(safeGet(fields, 4));
+        h.setProcessingId(safeGet(fields, 11));
+        h.setVersionNumber(safeGet(fields, 12));
+        h.setDateTime(parseDateTime(safeGet(fields, 13)));
+        return h;
     }
 
     private PatientRecord parsePatient(String[] fields) {
-        PatientRecord patient = new PatientRecord();
-        patient.setSequenceNumber(Integer.parseInt(safeGet(fields, 1, "0")));
-        patient.setPracticeAssignedPatientId(safeGet(fields, 2));
-        patient.setPatientName(safeGet(fields, 5));
-        return patient;
+        PatientRecord p = new PatientRecord();
+        p.setSequenceNumber(safeParseInt(fields, 1));
+        p.setPracticeAssignedPatientId(safeGet(fields, 2));
+        p.setPatientIdAlternate(safeGet(fields, 4));
+        p.setPatientName(safeGet(fields, 5));
+        p.setBirthDate(parseDateTime(safeGet(fields, 7)));
+        p.setPatientSex(safeGet(fields, 8));
+        p.setAttendingPhysicianId(safeGet(fields, 13));
+        return p;
     }
 
     private OrderRecord parseOrder(String[] fields) {
-        OrderRecord order = new OrderRecord();
-        order.setSequenceNumber(Integer.parseInt(safeGet(fields, 1, "0")));
-        order.setSpecimenId(safeGet(fields, 2));
-        order.setUniversalTestId(safeGet(fields, 4));
-        order.setActionCode(safeGet(fields, 11));
-        order.setSpecimenDescriptor(safeGet(fields, 15));
-        return order;
+        OrderRecord o = new OrderRecord();
+        o.setSequenceNumber(safeParseInt(fields, 1));
+        o.setSpecimenId(safeGet(fields, 2));
+        o.setUniversalTestId(safeGet(fields, 4));
+        o.setPriority(safeGet(fields, 5));
+        o.setRequestedDateTime(parseDateTime(safeGet(fields, 6)));
+        o.setActionCode(safeGet(fields, 11));
+        o.setRelevantClinicalInfo(safeGet(fields, 13));
+        o.setSpecimenDescriptor(safeGet(fields, 15));
+        o.setUserField1(safeGet(fields, 18));
+        o.setUserField2(safeGet(fields, 19));
+        o.setDateTimeResultsReported(parseDateTime(safeGet(fields, 22)));
+        o.setReportTypes(safeGet(fields, 25));
+        o.setLocationOfSpecimenCollection(safeGet(fields, 27));
+        return o;
     }
 
     private ResultRecord parseResult(String[] fields) {
-        ResultRecord result = new ResultRecord();
-        result.setSequenceNumber(Integer.parseInt(safeGet(fields, 1, "0")));
-        result.setUniversalTestId(safeGet(fields, 2));
-        result.setDataValue(safeGet(fields, 3));
-        result.setResultStatus(safeGet(fields, 8));
-        return result;
+        ResultRecord r = new ResultRecord();
+        r.setSequenceNumber(safeParseInt(fields, 1));
+        r.setUniversalTestId(safeGet(fields, 2));
+        r.setDataValue(safeGet(fields, 3));
+        r.setResultAbnormalFlags(safeGet(fields, 6));
+        r.setResultStatus(safeGet(fields, 8));
+        r.setOperatorId(safeGet(fields, 10));
+        r.setDateTimeTestCompleted(parseDateTime(safeGet(fields, 12)));
+        r.setInstrumentId(safeGet(fields, 13));
+        r.setTestName(safeGet(fields, 14));
+        return r;
+    }
+    
+    private QueryRecord parseQuery(String[] fields) {
+        QueryRecord q = new QueryRecord();
+        q.setSequenceNumber(safeParseInt(fields, 1));
+        q.setStartingRangeId(safeGet(fields, 2));
+        q.setRequestInformationStatusCodes(safeGet(fields, 12));
+        return q;
+    }
+    
+    private MResultRecord parseMResult(String[] fields) {
+        MResultRecord m = new MResultRecord();
+        m.setSequenceNumber(safeParseInt(fields, 1));
+        m.setResultWellName(safeGet(fields, 2));
+        m.setTypeOfCard(safeGet(fields, 3));
+        
+        // Field 5 can be a repeating field for reagents
+        String reagentData = safeGet(fields, 4);
+        if (!reagentData.isEmpty()) {
+            for (String reagentStr : reagentData.split("\\" + REPEAT_DELIMITER)) {
+                String[] reagentParts = reagentStr.split("\\" + COMPONENT_DELIMITER, -1);
+                m.addReagentInfo(safeGet(reagentParts, 0), safeGet(reagentParts, 1), safeGet(reagentParts, 2));
+            }
+        }
+        
+        m.setResultInformation(safeGet(fields, 5));
+        m.setTestName(safeGet(fields, 6));
+        return m;
     }
 
     private TerminatorRecord parseTerminator(String[] fields) {
-        TerminatorRecord terminator = new TerminatorRecord();
-        terminator.setSequenceNumber(Integer.parseInt(safeGet(fields, 1, "1")));
-        terminator.setTerminationCode(safeGet(fields, 2));
-        return terminator;
+        TerminatorRecord l = new TerminatorRecord();
+        l.setSequenceNumber(safeParseInt(fields, 1));
+        l.setTerminationCode(safeGet(fields, 2));
+        return l;
     }
     
     // --- Record Building Methods ---
 
     private String buildHeader(HeaderRecord r) {
-        return buildRecord("H", r.getDelimiters(), "", "", r.getSenderName(), "", "", "", "", "", "P", "LIS2-A", formatDateTime(LocalDateTime.now()));
+        return buildLine("H", 13, 
+            r.getDelimiters(), 
+            r.getMessageControlId(), 
+            r.getAccessPassword(), 
+            r.getSenderName(),
+            r.getSenderAddress(), 
+            r.getReservedField(), 
+            r.getSenderPhone(), 
+            r.getCharacteristics(),
+            r.getReceiverName(), 
+            r.getComments(), 
+            r.getProcessingId(), 
+            r.getVersionNumber(), 
+            formatDateTime(r.getDateTime())
+        );
     }
     
     private String buildPatient(PatientRecord r) {
-        return buildRecord("P", r.getSequenceNumber(), r.getPracticeAssignedPatientId(), "", "", r.getPatientName());
+        return buildLine("P", 35, 
+            String.valueOf(r.getSequenceNumber()), 
+            r.getPracticeAssignedPatientId(),
+            r.getLaboratoryAssignedPatientId(), 
+            r.getPatientIdAlternate(), 
+            r.getPatientName(),
+            r.getMothersMaidenName(), 
+            formatDateTime(r.getBirthDate()), 
+            r.getPatientSex(),
+            r.getPatientRaceEthnic(), 
+            r.getPatientAddress(), 
+            r.getReserved(),
+            r.getPatientTelephoneNumber(), 
+            r.getAttendingPhysicianId(), 
+            r.getPatientBirthName()
+            // Fields 16-35 are unused and will be padded
+        );
     }
 
     private String buildOrder(OrderRecord r) {
-        // Example for a simple order record. More fields could be added as needed.
-        return buildRecord("O", r.getSequenceNumber(), r.getSpecimenId(), "", r.getUniversalTestId(), "", "", "", "", "", "", r.getActionCode(), "", "", "", r.getSpecimenDescriptor());
+        return buildLine("O", 31,
+            String.valueOf(r.getSequenceNumber()), 
+            r.getSpecimenId(), 
+            r.getInstrumentSpecimenId(),
+            r.getUniversalTestId(), 
+            r.getPriority(), 
+            formatDateTime(r.getRequestedDateTime()),
+            formatDateTime(r.getSpecimenCollectionDateTime()), 
+            formatDateTime(r.getCollectionEndTime()),
+            r.getCollectionVolume(), 
+            r.getCollectorId(), 
+            r.getActionCode(), 
+            r.getDangerCode(),
+            r.getRelevantClinicalInfo(), 
+            formatDateTime(r.getDateTimeSpecimenReceived()),
+            r.getSpecimenDescriptor(), 
+            r.getOrderingPhysician(), 
+            r.getPhysicianPhoneNumber(),
+            r.getUserField1(), 
+            r.getUserField2(), 
+            r.getLaboratoryField1(), 
+            r.getLaboratoryField2(),
+            formatDateTime(r.getDateTimeResultsReported()), 
+            r.getInstrumentCharge(), 
+            r.getSectionId(),
+            r.getReportTypes(), 
+            r.getReservedField(), 
+            r.getLocationOfSpecimenCollection(),
+            r.getNosocomialInfectionFlag(), 
+            r.getSpecimenService(), 
+            r.getInstitution()
+        );
+    }
+
+    private String buildResult(ResultRecord r) {
+        return buildLine("R", 15,
+            String.valueOf(r.getSequenceNumber()),
+            r.getUniversalTestId(),
+            r.getDataValue(),
+            r.getUnits(),
+            r.getReferenceRanges(),
+            r.getResultAbnormalFlags(),
+            r.getNatureFlagsTest(),
+            r.getResultStatus(),
+            r.getDateOfChangeInInstrumentNormativeValues(),
+            r.getOperatorId(),
+            formatDateTime(r.getDateTimeTestStarted()),
+            formatDateTime(r.getDateTimeTestCompleted()),
+            r.getInstrumentId(),
+            r.getTestName()
+        );
+    }
+    
+    private String buildQuery(QueryRecord r) {
+        return buildLine("Q", 13,
+            String.valueOf(r.getSequenceNumber()),
+            r.getStartingRangeId(),
+            r.getEndingRangeId(),
+            r.getUniversalTestId(),
+            r.getNatureOfRequestTimeLimits(),
+            r.getBeginningRequestResultsDateTime(),
+            r.getEndingRequestResultsDateTime(),
+            r.getRequestingPhysicianName(),
+            r.getRequestingPhysicianPhoneNumber(),
+            r.getUserField1(),
+            r.getUserField2(),
+            r.getRequestInformationStatusCodes()
+        );
+    }
+    
+    private String buildMResult(MResultRecord r) {
+        // Build the repeating reagent field
+        String reagentInfoString = r.getReagentInformation().stream()
+                .map(info -> String.join(COMPONENT_DELIMITER,
+                        info.getReagentName() != null ? info.getReagentName() : "",
+                        info.getReagentLotNumber() != null ? info.getReagentLotNumber() : "",
+                        info.getReagentExpirationDate() != null ? info.getReagentExpirationDate() : ""
+                ))
+                .collect(Collectors.joining(REPEAT_DELIMITER));
+
+        return buildLine("M", 7,
+            String.valueOf(r.getSequenceNumber()),
+            r.getResultWellName(),
+            r.getTypeOfCard(),
+            reagentInfoString,
+            r.getResultInformation(),
+            r.getTestName()
+        );
     }
 
     private String buildTerminator(TerminatorRecord r) {
-        return buildRecord("L", "1", "N");
+        return buildLine("L", 3, 
+            String.valueOf(r.getSequenceNumber()), 
+            r.getTerminationCode()
+        );
     }
 
     // --- Helper Methods ---
 
-    /** Safely gets a field from an array, returning an empty string if the index is out of bounds. */
     private String safeGet(String[] fields, int index) {
         return (index < fields.length && fields[index] != null) ? fields[index] : "";
     }
-    
-    /** Safely gets a field, returning a default value if it's missing or empty. */
-    private String safeGet(String[] fields, int index, String defaultValue) {
-        String val = safeGet(fields, index);
-        return val.isEmpty() ? defaultValue : val;
-    }
 
-    private LocalDateTime parseDateTime(String astmDateTime) {
+    private Integer safeParseInt(String[] fields, int index) {
+        String val = safeGet(fields, index);
         try {
-            return astmDateTime != null && !astmDateTime.isEmpty() ? LocalDateTime.parse(astmDateTime, DATETIME_FORMATTER) : null;
+            return !val.isEmpty() ? Integer.parseInt(val) : 0;
+        } catch (NumberFormatException e) {
+            log.warn("Could not parse integer from '{}'. Returning 0.", val);
+            return 0;
+        }
+    }
+    
+    private LocalDateTime parseDateTime(String astmDateTime) {
+        if (astmDateTime == null || astmDateTime.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(astmDateTime, DATETIME_FORMATTER);
         } catch (DateTimeParseException e) {
             log.warn("Could not parse ASTM date '{}'. Returning null.", astmDateTime);
             return null;
@@ -186,26 +391,40 @@ public class OrthoVisionDriver implements InstrumentDriver {
     private String formatDateTime(LocalDateTime dateTime) {
         return dateTime != null ? dateTime.format(DATETIME_FORMATTER) : "";
     }
-    
-    /** A helper to build a record line from parts, handling nulls gracefully. */
-    private String buildRecord(Object... parts) {
-        StringJoiner sj = new StringJoiner("|");
-        for (Object part : parts) {
-            sj.add(part == null ? "" : String.valueOf(part));
+
+    /**
+     * Builds a single record line, padding with empty fields to ensure correct length.
+     * @param recordType The record type identifier (e.g., "H", "P").
+     * @param totalFields The total number of fields the record should have after the type ID.
+     * @param values The actual values for the fields.
+     * @return A correctly formatted ASTM record string.
+     */
+    private String buildLine(String recordType, int totalFields, String... values) {
+        List<String> fields = new ArrayList<>();
+        fields.add(recordType);
+        
+        Stream.of(values)
+              .map(v -> v == null ? "" : v)
+              .forEach(fields::add);
+        
+        // Pad with empty fields to meet the required length
+        while (fields.size() <= totalFields) {
+            fields.add("");
         }
-        return sj.toString();
+
+        return String.join(FIELD_DELIMITER, fields);
     }
     
     private void determineMessageType(AstmMessage msg) {
-        if (msg.hasResults()) msg.setMessageType("RESULT");
+        if (msg.hasResults() || msg.hasMResults()) msg.setMessageType("RESULT");
         else if (msg.hasQueries()) msg.setMessageType("QUERY");
         else if (msg.hasOrders()) msg.setMessageType("ORDER");
-        else msg.setMessageType("UNKNOWN"); // Default
+        else msg.setMessageType("UNKNOWN");
     }
 
     // --- Interface Methods ---
     @Override public String getInstrumentName() { return INSTRUMENT_NAME; }
     @Override public String getAstmVersion() { return ASTM_VERSION; }
     @Override public boolean supportsMessage(String rawMessage) { return rawMessage != null && rawMessage.contains("H|"); }
-    @Override public String getDriverConfiguration() { return "Instrument: " + INSTRUMENT_NAME + ", Version: " + ASTM_VERSION; }
+    @Override public String getDriverConfiguration() { return "Instrument: " + INSTRUMENT_NAME + ", Version: " + ASTM_VERSION + ", Status: Full Implementation"; }
 }

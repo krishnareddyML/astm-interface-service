@@ -104,7 +104,7 @@ public class InstrumentConnectionHandler implements Runnable {
                 serverMessageService.saveIncomingMessage(rawMessage, instrumentName, getRemoteAddress(), messageType);
                 AstmMessage parsedMessage = driver.parse(rawMessage);
 
-                if (parsedMessage != null && parsedMessage.hasResults()) {
+                if (parsedMessage != null && (parsedMessage.hasResults() || parsedMessage.hasQueries())) {
                     resultPublisher.publishResult(parsedMessage);
                 }
             }

@@ -15,7 +15,9 @@ import java.util.List;
 public class MessageTemplateManager {
     
     // The path to the JSON configuration within the classpath.
-    private static final String TEST_CASES_RESOURCE_PATH = "/test-cases.json";
+   // private static final String TEST_CASES_RESOURCE_PATH = "/test-cases.json";
+    
+   private static final String TEST_CASES_RESOURCE_PATH = "/ortho-vision-test-cases.json";
     
     /**
      * Loads the list of test cases from the test-cases.json file in the resources.
