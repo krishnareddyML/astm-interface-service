@@ -65,6 +65,7 @@ public class AstmParserSwingApp {
 
     private static AstmMessage parseAstmMessage(String raw) throws Exception {
         AstmMessage msg = new AstmMessage();
+        ResultRecord currentResultRecord = null; //
         String[] lines = raw.split("\\r?\\n");
         for (String line : lines) {
             line = line.trim();
@@ -87,21 +88,34 @@ public class AstmParserSwingApp {
                     parseOrderRecord(order, fields);
                     msg.addOrderRecord(order); 
                     break;
-                case "R": 
-                    ResultRecord result = new ResultRecord();
-                    parseResultRecord(result, fields);
-                    msg.addResultRecord(result); 
-                    break;
+                // case "R": 
+                //     ResultRecord result = new ResultRecord();
+                //     parseResultRecord(result, fields);
+                //     msg.addResultRecord(result); 
+                //     break;
+                case "R":
+                        // A new Result record is found
+                        ResultRecord result = new ResultRecord();
+                        parseResultRecord(result, fields);
+                        msg.addResultRecord(result);
+                        currentResultRecord = result; // Set this as the current context for M records
+                        break;    
                 case "Q": 
                     QueryRecord query = new QueryRecord();
                     parseQueryRecord(query, fields);
                     msg.addQueryRecord(query); 
                     break;
                 case "M": 
+                    // MResultRecord mResult = new MResultRecord();
+                    // parseMResultRecord(mResult, fields);
+                    // msg..addMResultRecord(mResult); 
+                    // break;
                     MResultRecord mResult = new MResultRecord();
-                    parseMResultRecord(mResult, fields);
-                    msg.addMResultRecord(mResult); 
-                    break;
+                    if (currentResultRecord != null) {
+                            parseMResultRecord(mResult, fields);
+                            currentResultRecord.addMResultRecord(mResult);
+                        } 
+                        break;
                 case "L": 
                     TerminatorRecord terminator = new TerminatorRecord();
                     parseTerminatorRecord(terminator, fields);
@@ -233,7 +247,8 @@ public class AstmParserSwingApp {
         addMultiRecordTab(tabs, "Order (O)", msg.getOrderRecords(), "Order Record");
         addMultiRecordTab(tabs, "Result (R)", msg.getResultRecords(), "Result Record");
         addMultiRecordTab(tabs, "Query (Q)", msg.getQueryRecords(), "Query Record");
-        addMultiRecordTab(tabs, "M-Result (M)", msg.getMResultRecords(), "M-Result Record");
+        for(ResultRecord result: msg.getResultRecords())
+            addMultiRecordTab(tabs, "M-Result (M)", result.getMResultRecords(), "M-Result Record");
         if (msg.getTerminatorRecord() != null) {
             tabs.addTab("Terminator (L)", createRecordPanel(msg.getTerminatorRecord(), "Terminator Record"));
         }

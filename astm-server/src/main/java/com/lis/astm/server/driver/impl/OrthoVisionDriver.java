@@ -40,6 +40,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
 
         log.debug("Parsing ASTM message for {}: {} characters", INSTRUMENT_NAME, rawMessage.length());
         AstmMessage astmMessage = new AstmMessage();
+        ResultRecord currentResultRecord = null; // 
         astmMessage.setRawMessage(rawMessage);
         astmMessage.setInstrumentName(INSTRUMENT_NAME);
 
@@ -64,13 +65,21 @@ public class OrthoVisionDriver implements InstrumentDriver {
                         astmMessage.addOrderRecord(parseOrder(fields));
                         break;
                     case "R":
-                        astmMessage.addResultRecord(parseResult(fields));
+                        // A new Result record is found
+                        ResultRecord newResult = parseResult(fields);
+                        astmMessage.addResultRecord(newResult);
+                        currentResultRecord = newResult; // Set this as the current context for M records
                         break;
                     case "Q":
                         astmMessage.addQueryRecord(parseQuery(fields));
                         break;
                     case "M":
-                        astmMessage.addMResultRecord(parseMResult(fields));
+                        // This M record belongs to the last R record we saw
+                        if (currentResultRecord != null) {
+                            currentResultRecord.addMResultRecord(parseMResult(fields));
+                        } else {
+                            log.warn("Found an M-Result record without a preceding R-Result context. Ignoring line: {}", trimmedLine);
+                         }
                         break;
                     case "L":
                         astmMessage.setTerminatorRecord(parseTerminator(fields));
@@ -83,8 +92,8 @@ public class OrthoVisionDriver implements InstrumentDriver {
             }
         }
         determineMessageType(astmMessage);
-        log.info("Successfully parsed {} message: {} order(s), {} result(s), {} query(s), {} m-result(s)",
-                astmMessage.getMessageType(), astmMessage.getOrderCount(), astmMessage.getResultCount(), astmMessage.getQueryCount(), astmMessage.getMResultCount());
+        log.info("Successfully parsed {} message: {} order(s), {} result(s), {} query(s)",
+                astmMessage.getMessageType(), astmMessage.getOrderCount(), astmMessage.getResultCount(), astmMessage.getQueryCount());
         return astmMessage;
     }
 
@@ -107,21 +116,30 @@ public class OrthoVisionDriver implements InstrumentDriver {
                 sj.add(buildOrder(order));
             }
         }
+        
         if (message.hasResults()) {
             for (ResultRecord result : message.getResultRecords()) {
+                // First, add the parent R record
                 sj.add(buildResult(result));
+            
+            // Then, add all of its child M records
+            if (result.getMResultRecords() != null) {
+                for (MResultRecord mResult : result.getMResultRecords()) {
+                    sj.add(buildMResult(mResult));
+                }
             }
         }
+    }
         if (message.hasQueries()) {
             for (QueryRecord query : message.getQueryRecords()) {
                 sj.add(buildQuery(query));
             }
         }
-        if (message.hasMResults()) {
-            for (MResultRecord mResult : message.getMResultRecords()) {
-                sj.add(buildMResult(mResult));
-            }
-        }
+        // if (message.hasMResults()) {
+        //     for (MResultRecord mResult : message.getMResultRecords()) {
+        //         sj.add(buildMResult(mResult));
+        //     }
+        // }
         if (message.getTerminatorRecord() != null) {
             sj.add(buildTerminator(message.getTerminatorRecord()));
         }
@@ -416,7 +434,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
     }
     
     private void determineMessageType(AstmMessage msg) {
-        if (msg.hasResults() || msg.hasMResults()) msg.setMessageType("RESULT");
+        if (msg.hasResults()) msg.setMessageType("RESULT");
         else if (msg.hasQueries()) msg.setMessageType("QUERY");
         else if (msg.hasOrders()) msg.setMessageType("ORDER");
         else msg.setMessageType("UNKNOWN");

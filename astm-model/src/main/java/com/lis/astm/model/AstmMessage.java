@@ -45,9 +45,9 @@ public class AstmMessage {
     @Builder.Default
     private List<QueryRecord> queryRecords = new ArrayList<>();
     
-    @JsonProperty("mResultRecords")
-    @Builder.Default
-    private List<MResultRecord> mResultRecords = new ArrayList<>();
+    // @JsonProperty("mResultRecords")
+    // @Builder.Default
+    // private List<MResultRecord> mResultRecords = new ArrayList<>();
     
     @JsonProperty("terminatorRecord")
     private TerminatorRecord terminatorRecord;
@@ -83,12 +83,12 @@ public class AstmMessage {
         this.queryRecords.add(queryRecord);
     }
     
-    public void addMResultRecord(MResultRecord mResultRecord) {
-        if (this.mResultRecords == null) {
-            this.mResultRecords = new ArrayList<>();
-        }
-        this.mResultRecords.add(mResultRecord);
-    }
+    // public void addMResultRecord(MResultRecord mResultRecord) {
+    //     if (this.mResultRecords == null) {
+    //         this.mResultRecords = new ArrayList<>();
+    //     }
+    //     this.mResultRecords.add(mResultRecord);
+    // }
     
     public boolean hasResults() {
         return resultRecords != null && !resultRecords.isEmpty();
@@ -102,9 +102,9 @@ public class AstmMessage {
         return queryRecords != null && !queryRecords.isEmpty();
     }
     
-    public boolean hasMResults() {
-        return mResultRecords != null && !mResultRecords.isEmpty();
-    }
+    // public boolean hasMResults() {
+    //     return mResultRecords != null && !mResultRecords.isEmpty();
+    // }
     
     public int getOrderCount() {
         return orderRecords != null ? orderRecords.size() : 0;
@@ -118,7 +118,7 @@ public class AstmMessage {
         return queryRecords != null ? queryRecords.size() : 0;
     }
     
-    public int getMResultCount() {
-        return mResultRecords != null ? mResultRecords.size() : 0;
-    }
+    // public int getMResultCount() {
+    //     return mResultRecords != null ? mResultRecords.size() : 0;
+    // }
 }

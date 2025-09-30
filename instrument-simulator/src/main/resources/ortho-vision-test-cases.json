@@ -13,5 +13,10 @@
     "caseName": "Host Query: Product Test Query",
     "caseKey": "QUERY",
     "messageContent": "H|\\^&|||OCD^VISION^5.13.1.46935^JNumber|||||||P|LIS2-A|20210305190245\rQ|1|^=W13131200096100||||||||||O\rL||"
+  },
+  {
+    "caseName":"Result with Strip trailing delimiters set to No",
+    "caseKey":"RESULT",
+    "messageContent":"H|\\^&|||OCD^VISION^5.13.1.46935^JNumber|||||||P|LIS2-A|20210303211642\rP|1|PID123456||NID123456^MID123456^OID123456|Brown^Bobby^B|White|19650102030400|U|||||PHY1234^Kildare^James^P|Blaine||||||||||||||||||||\rO|1|SID305||ABO|N|20210303211353|||||||||CENTBLOOD|||||||20210303211641|||F|||||\rR|1|ABO|A|||||F||Automatic||20210303211641|JNumber\rM|1|Anti-A|A/B/D Monoclonal Grouping^1^00084^190221053-05^20210828235959^20210303_211635Grey.jpg^20210303_211635Color.jpg|MTS Diluent 2 Plus^636^20210828235959|30^A\rM|2|Anti-B|A/B/D Monoclonal Grouping^2^00084^190221053-05^20210828235959^20210303_211635Grey.jpg^20210303_211635Color.jpg|MTS Diluent 2 Plus^636^20210828235959|0^A\rR|2|Rh|NEG|||||F||Automatic||20210303211641|JNumber\rM|1|Anti-D|A/B/D Monoclonal Grouping^3^00084^190221053-05^20210828235959^20210303_211635Grey.jpg^20210303_211635Color.jpg|MTS Diluent 2 Plus^636^20210828235959|0^A\rL||"
   }
 ]

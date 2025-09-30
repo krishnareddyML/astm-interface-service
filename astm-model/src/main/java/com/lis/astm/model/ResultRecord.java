@@ -7,6 +7,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Represents an ASTM Result Record (R)
@@ -80,6 +82,10 @@ public class ResultRecord {
     
     @JsonProperty("testName")
     private String testName; // Human-readable test name (when enabled)
+
+    @JsonProperty("mResultRecords")
+    private List<MResultRecord> mResultRecords = new ArrayList<>();
+
     
     public ResultRecord(String universalTestId, String dataValue, String units) {
         this.universalTestId = universalTestId;
@@ -189,6 +195,17 @@ public class ResultRecord {
             result[i] = i < components.length ? components[i] : "";
         }
         return result;
+    }
+
+    /**
+     * Utility method to add a child M-Result record to this Result.
+     * @param mResultRecord The M-Result record to associate with this Result.
+     */
+    public void addMResultRecord(MResultRecord mResultRecord) {
+        if (this.mResultRecords == null) {
+            this.mResultRecords = new ArrayList<>();
+        }
+        this.mResultRecords.add(mResultRecord);
     }
     
     /**
