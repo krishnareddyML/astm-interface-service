@@ -33,6 +33,12 @@ spring:
     username: ${DB_USERNAME:medsa}
     password: ${DB_PASSWORD:Lahari01}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    hikari:                              
+            maximumPoolSize: 5
+            connectionTimeout: 180000
+            leakDetectionThreshold: 10000
+            poolName: Hikaripool_ASTM
+
   
   # Enable scheduling for retry processing
   task:
