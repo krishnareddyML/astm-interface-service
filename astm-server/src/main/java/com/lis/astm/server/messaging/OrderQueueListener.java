@@ -22,40 +22,45 @@ public class OrderQueueListener {
     private final ObjectMapper objectMapper;
 
     // This method can be triggered by your RabbitMQ listener configuration
-    public void handleOrderMessage(byte[] messageBytes) { // <-- ❗️ CHANGED from String to byte[]
-        String message = new String(messageBytes); // <-- ✨ ADDED conversion to String
+    public void handleOrderMessage(byte[] messageBytes) { 
+        String message = new String(messageBytes); 
         try {
-            log.info("📨 Received order message from queue: {}", message);
+            log.info("Received order message from queue: {}", message);
             
             AstmMessage astmMessage = objectMapper.readValue(message, AstmMessage.class);
             if (astmMessage == null || astmMessage.getInstrumentName() == null) {
-                log.error("❌ Invalid order message or missing instrument name.");
+                log.error("Invalid order message or missing instrument name.");
                 return;
             }
             
             String instrumentName = astmMessage.getInstrumentName();
             
-            // 💾 STEP 1: Save to database for persistence. This part is correct.
+            //STEP 1: Save to database for persistence. This part is correct.
             OrderMessage savedMessage = orderMessageService.saveOrderMessage(message, instrumentName);
             
-            // 🚀 STEP 2: Attempt to queue the message for immediate processing.
+            // STEP 2: Attempt to queue the message for immediate processing.
             InstrumentConnectionHandler handler = astmServer.getConnectionHandler(instrumentName);
             
             if (handler != null && handler.isConnected()) {
-                // The handler exists and is connected, so queue the message.
-                // The handler's own event loop will pick it up and send it.
-                handler.queueMessageForSending(astmMessage);
-                log.info("⚡ Order message for '{}' was queued for immediate sending.", instrumentName);
-                 // We can mark it as success here because the handler will now manage it.
-                orderMessageService.markAsSuccess(savedMessage.getId());
+                
+                if (!orderMessageService.markAsProcessing(savedMessage.getId())) {
+                    log.warn("Message {} is already being processed, skipping.", savedMessage.getId());
+                    return;
+                }else{
+                handler.queueOrderForSending(savedMessage);
+                log.info("Order message for '{}' was queued for immediate sending.", instrumentName);
+                }
             } else {
-                log.warn("⏳ Instrument '{}' is not connected. Order {} will be processed by the retry service.", 
+                log.warn("Instrument '{}' is not connected. Order {} will be processed by the retry service.", 
                          instrumentName, savedMessage.getId());
                 // No need to do anything else. The scheduled retry service will handle it.
             }
+
+            log.debug("Attempting immediate send for order {}.", savedMessage.getId());
+            //orderMessageService.processOrderMessage(savedMessage.getId());
             
         } catch (Exception e) {
-            log.error("❌ Error handling order message: {}", message, e);
+            log.error("Error handling order message: {}", message, e);
         }
     }
 }   

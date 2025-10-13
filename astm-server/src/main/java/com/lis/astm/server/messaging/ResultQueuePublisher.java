@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lis.astm.model.AstmMessage;
 import com.lis.astm.server.config.AppConfig;
+import com.lis.astm.server.service.ServerMessageService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.AmqpException;
@@ -23,13 +25,14 @@ public class ResultQueuePublisher {
     private final RabbitTemplate rabbitTemplate;
     private final AppConfig appConfig;
     private final ObjectMapper objectMapper;
+    private final ServerMessageService serverMessageService;
 
     /**
      * Publishes a parsed ASTM message containing results to the configured message queue.
      *
      * @param astmMessage The message object to be published.
      */
-    public void publishResult(AstmMessage astmMessage) {
+    public void publishResult(Long messageId, AstmMessage astmMessage) {
         if (astmMessage == null) {
             log.warn("Cannot publish a null ASTM message.");
             return;
@@ -41,6 +44,7 @@ public class ResultQueuePublisher {
         }
 
         AppConfig.InstrumentConfig instrumentConfig = findInstrumentConfig(astmMessage.getInstrumentName());
+
         if (instrumentConfig == null) {
             log.error("No messaging configuration found for instrument: {}. Cannot publish result.", astmMessage.getInstrumentName());
             return;
@@ -64,16 +68,19 @@ public class ResultQueuePublisher {
                 return;
             }
 
-            log.info("✅ Successfully published result from instrument '{}' to message queue.", astmMessage.getInstrumentName());
+            log.info("Successfully published result from instrument '{}' to message queue.", astmMessage.getInstrumentName());
+            serverMessageService.markAsPublished(messageId);
 
         } catch (JsonProcessingException e) {
-            log.error("❌ Failed to serialize AstmMessage to JSON for instrument '{}'. This is a non-retriable error.",
+            log.error("Failed to serialize AstmMessage to JSON for instrument '{}'. This is a non-retriable error.",
                     astmMessage.getInstrumentName(), e);
+                    serverMessageService.markAsError(messageId, e.getMessage());
             // This error is critical and indicates a problem with the data model.
         } catch (AmqpException e) {
-            log.error("❌ AMQP error while publishing result for instrument '{}'. This may be retriable.",
+            log.error("AMQP error while publishing result for instrument '{}'. This may be retriable.",
                     astmMessage.getInstrumentName(), e);
             // Let the caller (e.g., ServerMessageRetryService) handle this exception.
+            serverMessageService.markForRetryPublishing(messageId, e.getMessage());
             throw e;
         }
     }

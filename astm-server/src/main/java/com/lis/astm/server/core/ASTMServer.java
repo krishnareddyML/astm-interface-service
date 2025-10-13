@@ -1,11 +1,11 @@
 package com.lis.astm.server.core;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lis.astm.server.config.AppConfig;
 import com.lis.astm.server.driver.InstrumentDriver;
 import com.lis.astm.server.messaging.ResultQueuePublisher;
 import com.lis.astm.server.service.ServerMessageService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
@@ -34,15 +34,26 @@ import java.util.concurrent.*;
 @Component
 public class ASTMServer {
 
-    @Autowired private AppConfig appConfig;
-    @Autowired private ResultQueuePublisher resultQueuePublisher;
-    @Autowired private ServerMessageService serverMessageService;
+    private AppConfig appConfig;
+    private ResultQueuePublisher resultQueuePublisher;
+    private ServerMessageService serverMessageService;
+    //private OrderMessageService orderMessageService;
+    private ObjectMapper objectMapper;
 
     private ExecutorService connectionExecutor;
     private final Map<String, ServerSocket> serverSockets = new ConcurrentHashMap<>();
     private final Map<String, Thread> listenerThreads = new ConcurrentHashMap<>();
     private final Map<String, InstrumentConnectionHandler> activeConnections = new ConcurrentHashMap<>();
     private volatile boolean running = false;
+
+    
+    public ASTMServer(AppConfig appConfig, ResultQueuePublisher resultQueuePublisher,
+                      ServerMessageService serverMessageService, ObjectMapper objectMapper) {
+        this.appConfig = appConfig;
+        this.resultQueuePublisher = resultQueuePublisher;
+        this.serverMessageService = serverMessageService;
+        this.objectMapper = objectMapper;
+    }
 
     @PostConstruct
     public void startServer() {
@@ -144,7 +155,7 @@ public class ASTMServer {
             InstrumentDriver driver = (InstrumentDriver) Class.forName(config.getDriverClassName()).getDeclaredConstructor().newInstance();
             
             InstrumentConnectionHandler handler = new InstrumentConnectionHandler(
-                clientSocket, driver, instrumentName, resultQueuePublisher, serverMessageService);
+                clientSocket, driver, instrumentName, resultQueuePublisher, serverMessageService, objectMapper);
 
             // Submit the handler to the executor and store a reference to it.
             connectionExecutor.submit(handler);

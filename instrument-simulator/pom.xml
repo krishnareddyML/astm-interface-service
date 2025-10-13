@@ -76,7 +76,7 @@
                         <configuration>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.lis.astm.simulator.InstrumentSimulator</mainClass>
+                                    <mainClass>com.lis.astm.simulator.AdvancedAstmSimulator</mainClass>
                                 </transformer>
                             </transformers>
                         </configuration>

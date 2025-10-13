@@ -131,7 +131,7 @@ public class OrderMessageRepository {
     public List<OrderMessage> findMessagesReadyForRetry(int limit) {
         String sql = "SELECT TOP (?) * FROM ASTMOrderMessages " +
                 "WHERE Status = 'PENDING' " +
-                "AND RetryCount < MaxRetryAttempts " +
+                "AND RetryCount <= MaxRetryAttempts " +
                 "AND (NextRetryAt IS NULL OR NextRetryAt <= GETDATE()) " +
                 "ORDER BY CreatedAt ASC";
         

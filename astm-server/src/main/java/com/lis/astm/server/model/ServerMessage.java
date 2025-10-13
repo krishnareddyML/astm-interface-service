@@ -21,6 +21,7 @@ public class ServerMessage {
     private String messageId;
     private String instrumentName;
     private String rawMessage;
+    private String parsedJsonMessage;
     private String messageType; // RESULT, ORDER, QUERY, MESSAGE, etc.
     private Status status;
     private LocalDateTime receivedAt;
@@ -40,9 +41,10 @@ public class ServerMessage {
     /**
      * Mark as processed
      */
-    public void markProcessed() {
+    public void markProcessed(String parsedJsonMessage) {
         this.status = Status.PROCESSED;
         this.processedAt = LocalDateTime.now();
+        this.parsedJsonMessage = parsedJsonMessage;
     }
     
     /**

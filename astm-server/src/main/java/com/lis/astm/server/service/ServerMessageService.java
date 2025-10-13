@@ -22,7 +22,7 @@ public class ServerMessageService {
     
     private final ServerMessageRepository repository;
     
-    public ServerMessage saveIncomingMessage(String rawMessage, String instrumentName, 
+    public ServerMessage saveIncomingMessage(String rawMessage,  String instrumentName, 
                                            String remoteAddress, String messageType) {
         try {
             String messageId = UUID.randomUUID().toString();
@@ -37,20 +37,20 @@ public class ServerMessageService {
                     .build();
             
             ServerMessage saved = repository.save(serverMessage);
-            log.debug("💾 Saved incoming message {} from instrument {} (type: {}, {} chars)", 
+            log.debug("Saved incoming message {} from instrument {} (type: {}, {} chars)", 
                      messageId, instrumentName, messageType, rawMessage.length());
             return saved;
         } catch (Exception e) {
-            log.error("❌ Failed to save incoming message from {}: {}", instrumentName, e.getMessage(), e);
+            log.error("Failed to save incoming message from {}: {}", instrumentName, e.getMessage(), e);
             throw new RuntimeException("Failed to save incoming message", e);
         }
     }
     
-    public void markAsProcessed(Long messageId, AstmMessage parsedMessage) {
+    public void markAsProcessed(Long messageId, String parsedJsonMessage) {
         repository.findById(messageId).ifPresent(message -> {
-            message.markProcessed();
+            message.markProcessed(parsedJsonMessage);
             repository.update(message);
-            log.debug("✅ Marked message {} as processed", message.getMessageId());
+            log.debug("Marked message {} as processed", message.getMessageId());
         });
     }
     
@@ -58,7 +58,7 @@ public class ServerMessageService {
         repository.findById(messageId).ifPresent(message -> {
             message.markPublished();
             repository.update(message);
-            log.debug("📤 Marked message {} as published", message.getMessageId());
+            log.debug("Marked message {} as published", message.getMessageId());
         });
     }
     
@@ -66,7 +66,7 @@ public class ServerMessageService {
         repository.findById(messageId).ifPresent(message -> {
             message.markForRetryPublishing(errorMessage);
             repository.update(message);
-            log.warn("🔄 Marked message {} for retry publishing: {}", message.getMessageId(), errorMessage);
+            log.warn("Marked message {} for retry publishing: {}", message.getMessageId(), errorMessage);
         });
     }
     
@@ -74,7 +74,7 @@ public class ServerMessageService {
         repository.findById(messageId).ifPresent(message -> {
             message.markError(errorMessage);
             repository.update(message);
-            log.warn("❌ Marked message {} as error: {}", message.getMessageId(), errorMessage);
+            log.warn("Marked message {} as error: {}", message.getMessageId(), errorMessage);
         });
     }
     
@@ -93,6 +93,8 @@ public class ServerMessageService {
         boolean hasResult = false;
         boolean hasOrder = false;
         boolean hasQuery = false;
+        boolean hasPatient = false;
+        boolean hasMResult = false;
         
         for (String line : lines) {
             line = line.trim().toUpperCase();
@@ -101,6 +103,8 @@ public class ServerMessageService {
             else if (line.startsWith("R|")) hasResult = true;
             else if (line.startsWith("O|")) hasOrder = true;
             else if (line.startsWith("Q|")) hasQuery = true;
+            else if (line.startsWith("M|")) hasMResult = true;
+            else if (line.startsWith("P|")) hasPatient = true;
         }
         
         if (hasHeader && hasTerminator && !hasResult && !hasOrder && !hasQuery) {

@@ -26,7 +26,7 @@
             <configuration>
               <transformers>
                 <transformer>
-                  <mainClass>com.lis.astm.simulator.InstrumentSimulator</mainClass>
+                  <mainClass>com.lis.astm.simulator.AdvancedAstmSimulator</mainClass>
                 </transformer>
               </transformers>
             </configuration>

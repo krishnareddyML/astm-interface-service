@@ -22,5 +22,5 @@
   "terminatorRecord": {
     "recordType": "L"
   },
-  "rawMessage": "H|\\^&\r\nP|1\r\nO|1|SID101||ABO|||||||||||CENTBLOOD\r\nL\r\n"
+  "rawMessage": "H|\\^&\r\nP|1\r\nO|1|SID101||ABO|||||||||||CENTBLOOD\r\nL"
 }
