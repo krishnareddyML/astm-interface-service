@@ -25,7 +25,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "lis.messaging.enabled", havingValue = "true")
-public class OrderMessageService {
+public class OrderMessageService implements InstrumentConnectionHandler.OrderOutcomeListener {
 
     private final OrderMessageRepository repository;
     private final ASTMServer astmServer;
@@ -168,6 +168,36 @@ public class OrderMessageService {
         }
     }
     
+    // --- InstrumentConnectionHandler.OrderOutcomeListener ---
+
+    /** Called by the connection handler once every frame of the order was acknowledged by the instrument. */
+    @Override
+    public void onSent(OrderMessage order) {
+        markAsSuccess(order.getId());
+        log.info("Order {} for instrument '{}' marked SUCCESS.", order.getMessageId(), order.getInstrumentName());
+    }
+
+    /**
+     * Called by the connection handler when an order could not be delivered (NAK, timeout, I/O error,
+     * connection closed). The order goes back to PENDING with a retry delay, or to FAILED when the
+     * retry budget is exhausted.
+     */
+    @Override
+    public void onFailed(OrderMessage order, String reason) {
+        OrderMessage current = repository.findById(order.getId()).orElse(order);
+        if (current.getStatus() == OrderMessage.Status.SUCCESS) {
+            return; // already acknowledged by another path; nothing to do
+        }
+        if (current.getRetryCount() + 1 >= current.getMaxRetryAttempts()) {
+            current.markFailed("Max retries reached. Last error: " + reason);
+            repository.update(current);
+            log.error("Order {} for instrument '{}' marked FAILED after {} attempts: {}",
+                    current.getMessageId(), current.getInstrumentName(), current.getMaxRetryAttempts(), reason);
+            return;
+        }
+        scheduleRetry(current, connectionRetryDelayMinutes, reason);
+    }
+
     /**
      * Updates the database record to schedule a retry for a message that couldn't be sent.
      */

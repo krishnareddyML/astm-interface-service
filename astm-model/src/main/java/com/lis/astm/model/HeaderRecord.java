@@ -29,8 +29,11 @@ public class HeaderRecord {
     @JsonProperty("recordType")
     private String recordType = "H"; // Always "H" for Header
     
+    /** The ASTM E1394 delimiter definition: field '|', repeat '\\', component '^', escape '&'. */
+    public static final String STANDARD_DELIMITERS = "\\^&";
+
     @JsonProperty("delimiters")
-    private String delimiters = "|\\^&"; // Field, Component, Repeat delimiters (fixed value)
+    private String delimiters = STANDARD_DELIMITERS; // Repeat, Component, Escape delimiters (fixed value)
     
     @JsonProperty("messageControlId")
     private String messageControlId; // Unused per specification

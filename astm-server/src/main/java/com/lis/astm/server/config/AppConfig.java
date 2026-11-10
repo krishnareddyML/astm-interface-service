@@ -27,7 +27,12 @@ public class AppConfig {
         private int port;
         private String driverClassName;
         private boolean enabled = true;
-        private int maxConnections = 5;
+        /** Kept for backward compatibility; the server accepts one session per instrument. */
+        private int maxConnections = 1;
+        /**
+         * Kept for backward compatibility. Idle sessions are no longer timed out: dead peers are
+         * detected by TCP keep-alive and replaced when the instrument reconnects.
+         */
         private int connectionTimeoutSeconds = 30;
         
         // Queue names bound to instrument level
