@@ -1,0 +1,47 @@
+[
+  {
+    "caseName": "XN 5.1.1 Batch inquiry from work list (rack 2, position 1)",
+    "caseKey": "QUERY",
+    "messageContent": "H|\\^&|||XN-21^00-01^11001^^^^12345678||||||||E1394-97\rQ|1|2^1||||${timestamp}\rL|1|N"
+  },
+  {
+    "caseName": "XN 5.1.2 Real-time inquiry, manual mode (sample ID key)",
+    "caseKey": "QUERY",
+    "messageContent": "H|\\^&|||XN-21^00-01^11001^^^^12345678||||||||E1394-97\rQ|1|^^            1234567890^B||||${timestamp}||||||F\rL|1|N"
+  },
+  {
+    "caseName": "XN 5.1.3 Real-time inquiry, sampler mode (rack/position + sample ID)",
+    "caseKey": "QUERY",
+    "messageContent": "H|\\^&|||XN-21^00-01^11001^^^^12345678||||||||E1394-97\rQ|1|2^1^            1234567890^B||||${timestamp}||||||N\rL|1|N"
+  },
+  {
+    "caseName": "XN 5.3.1 Analysis results (CBC+DIFF+RET, IP flags, action message, scattergram, reflex comment)",
+    "caseKey": "RESULT",
+    "messageContent": "H|\\^&|||XN-21^00-01^11001^^^^12345678||||||||E1394-97\rP|1|||100|^Jim^Brown||20010820|M|||||^Dr.1|||||||||||^^^WEST\rC|1||Patient Comments\rO|1||2^1^            1234567890^B|^^^^WBC\\^^^^RBC\\^^^^HGB\\^^^^HCT\\^^^^MCV\\^^^^MCH\\^^^^MCHC\\^^^^PLT\\^^^^NEUT%\\^^^^LYMPH%\\^^^^MONO%\\^^^^EO%\\^^^^BASO%\\^^^^NEUT#\\^^^^LYMPH#\\^^^^MONO#\\^^^^EO#\\^^^^BASO#\\^^^^RDW-SD\\^^^^RDW-CV\\^^^^MPV\\^^^^RET%\\^^^^RET#\\^^^^IRF||20010807101000|||||N||||||||||||||Q\rC|1||Sample Comments\rR|1|^^^^WBC^1^^W|7.81|10*3/uL||N||||||20010806120000\rR|2|^^^^RBC^1|----|10*6/uL||A||||||20010806120000\rR|3|^^^^HGB^1|20.5|g/dL||W||||||20010806120000\rR|4|^^^^HCT^1|40.3|%||W||||||20010806120000\rR|5|^^^^MCV^1|90.1|fL||N||||||20010806120000\rR|6|^^^^MCH^1|30.2|pg||N||||||20010806120000\rR|7|^^^^MCHC^1|33.5|g/dL||N||||||20010806120000\rR|8|^^^^PLT^1|250|10*3/uL||N||||||20010806120000\rR|9|^^^^NEUT%^1|60.0|%||N||||||20010806120000\rR|10|^^^^LYMPH%^1|30.0|%||N||||||20010806120000\rR|11|^^^^MONO%^1|6.0|%||N||||||20010806120000\rR|12|^^^^EO%^1|3.0|%||N||||||20010806120000\rR|13|^^^^BASO%^1|1.0|%||N||||||20010806120000\rR|14|^^^^NEUT#^1^^W|4.69|10*3/uL||N||||||20010806120000\rR|15|^^^^LYMPH#^1|2.34|10*3/uL||N||||||20010806120000\rR|16|^^^^MONO#^1|0.47|10*3/uL||N||||||20010806120000\rR|17|^^^^EO#^1|0.23|10*3/uL||N||||||20010806120000\rR|18|^^^^BASO#^1|0.08|10*3/uL||N||||||20010806120000\rR|19|^^^^RDW-SD^1|41.2|fL||N||||||20010806120000\rR|20|^^^^RDW-CV^1|12.8|%||N||||||20010806120000\rR|21|^^^^MPV^1|10.1|fL||N||||||20010806120000\rR|22|^^^^RET%^1|1.20|%||N||||||20010806120000\rR|23|^^^^RET#^1|0.0540|10*6/uL||N||||||20010806120000\rR|24|^^^^IRF^1|8.5|%||N||||||20010806120000\rR|33|^^^^PLT_Abn_Distribution||||A||||||20010806120000\rR|34|^^^^Blasts?|0|||||||||20010806120000\rR|35|^^^^Left_Shift?|0|||||||||20010806120000\rR|36|^^^^Atypical_Lympho?|0|||||||||20010806120000\rR|37|^^^^Blasts/Abn_Lympho?|100|||A||||||20010806120000\rR|46|^^^^ACTION_MESSAGE_Delta||||A\rR|47|^^^^SCAT_DIFF|PNG&R&20010806&R&2001_08_06_12_00_1234567890_DIFF.PNG|||N||||||20010806120000\rC|1||1^WBC HIGH\\23^Need to PLT-F analysis\rL|1|N"
+  },
+  {
+    "caseName": "XN 5.3.2 Analysis results in body fluid mode",
+    "caseKey": "RESULT",
+    "messageContent": "H|\\^&|||XN-21^00-00^11001^^^^12345678||||||||E1394-97\rP|1|||100|^Jim^Brown||20010820|M|||||^Dr.1|||||||||||^^^WEST\rC|1||Patient Comments\rO|1||^^            1234567890^B|^^^^WBC-BF\\^^^^RBC-BF\\^^^^MN#\\^^^^MN%\\^^^^PMN#\\^^^^PMN%|||||||N||||||||||||||F\rC|1||Sample Comments\rR|1|^^^^WBC-BF^1|5.359|10*3/uL||N||||||20010806120000\rR|2|^^^^RBC-BF^1|4.4|10*6/uL||A||||||20010806120000\rR|3|^^^^MN#^1|4.041|10*3/uL||W||||||20010806120000\rR|4|^^^^MN%^1|75.4|%||N||||||20010806120000\rR|5|^^^^PMN#^1|1.318|10*3/uL||N||||||20010806120000\rR|6|^^^^PMN%^1|24.6|%||N||||||20010806120000\rL|1|N"
+  },
+  {
+    "caseName": "XN 5.3.3 Real-time output of QC data (QC- sample number)",
+    "caseKey": "QC_RESULT",
+    "messageContent": "H|\\^&|||XN-21^00-01^11001^^^^12345678||||||||E1394-97\rP|1\rO|1||^^             QC-12345678^B|^^^^WBC\\^^^^RBC\\^^^^HGB\\^^^^HCT\\^^^^MCV\\^^^^MCH\\^^^^MCHC\\^^^^PLT\\^^^^NEUT%\\^^^^LYMPH%\\^^^^MONO%\\^^^^EO%\\^^^^BASO%\\^^^^NEUT#\\^^^^LYMPH#\\^^^^MONO#\\^^^^EO#\\^^^^BASO#\\^^^^RDW-SD\\^^^^RDW-CV\\^^^^MPV\\^^^^RET%\\^^^^RET#\\^^^^IRF|||||||Q||||||||||||||F\rR|1|^^^^WBC^1|7.58|10*3/uL||N||||||20010806120000\rR|2|^^^^RBC^1|4.49|10*6/uL||N||||||20010806120000\rR|3|^^^^HGB^1|13.3|g/dL||N||||||20010806120000\rR|4|^^^^HCT^1|37.3|%||N||||||20010806120000\rR|33|^^^^SCAT_DIFF|PNG&R&20010806&R&2001_08_06_12_00_1234567890_DIFF.PNG|||N||||||20010806120000\rL|1|N"
+  },
+  {
+    "caseName": "XN 5.3.4 Manual output of QC data (QC file number)",
+    "caseKey": "QC_RESULT",
+    "messageContent": "H|\\^&|||XN-21^00-01^11001^^^^12345678||||||||E1394-97\rP|1\rO|1||^^1|^^^^WBC\\^^^^RBC\\^^^^HGB\\^^^^HCT\\^^^^MCV\\^^^^MCH\\^^^^MCHC\\^^^^PLT\\^^^^NEUT%\\^^^^LYMPH%\\^^^^MONO%\\^^^^EO%\\^^^^BASO%\\^^^^NEUT#\\^^^^LYMPH#\\^^^^MONO#\\^^^^EO#\\^^^^BASO#\\^^^^RDW-SD\\^^^^RDW-CV\\^^^^MPV\\^^^^RET%\\^^^^RET#\\^^^^IRF\\^^^^~DIFF-X\\^^^^~DIFF-Y\\^^^^~DIFF-WBC|||||||Q||||||||||||||F\rR|1|^^^^WBC^1|7.58|10*3/uL||N||||||20010806120000\rR|2|^^^^RBC^1|4.49|10*6/uL||N||||||20010806120000\rR|3|^^^^HGB^1|13.3|g/dL||N||||||20010806120000\rR|4|^^^^HCT^1|37.3|%||N||||||20010806120000\rL|1|N"
+  },
+  {
+    "caseName": "XN 4.3.3.6 Slide preparation result (XN-1500 / XN-3000 standalone with SP-10)",
+    "caseKey": "RESULT",
+    "messageContent": "H|\\^&|||XN-21^00-01^11001^^^^12345678||||||||E1394-97\rP|1|||100|^Jim^Brown||20010820|M\rO|1||^^            1234567890^B|^^^^SMEAR|||||||N||||||||||||||F\rR|1|^^^^SMEAR^^^^^|OK|10*3/uL||||||||20011116101000\rL|1|N"
+  },
+  {
+    "caseName": "XN Latin-1 patient name (checksum over extended characters)",
+    "caseKey": "RESULT",
+    "messageContent": "H|\\^&|||XN-21^00-01^11001^^^^12345678||||||||E1394-97\rP|1|||100|^José^Müller||20010820|M\rO|1||^^            1234567890^B|^^^^WBC|||||||N||||||||||||||F\rR|1|^^^^WBC^1|7.81|10*3/uL||N||||||20010806120000\rL|1|N"
+  }
+]

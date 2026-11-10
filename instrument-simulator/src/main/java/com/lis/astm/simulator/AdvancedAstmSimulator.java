@@ -20,29 +20,41 @@ public class AdvancedAstmSimulator {
 
     private final String host;
     private final int port;
+    private final String testCaseSource;
     private Socket socket;
     private InputStream inputStream;
     private OutputStream outputStream;
     private final Scanner userInput;
     private List<TestCase> testCases;
 
-    public AdvancedAstmSimulator(String host, int port) {
+    public AdvancedAstmSimulator(String host, int port, String testCaseSource) {
         this.host = host;
         this.port = port;
+        this.testCaseSource = testCaseSource;
         this.userInput = new Scanner(System.in);
         this.testCases = new ArrayList<>();
     }
 
     public static void main(String[] args) {
+        if (args.length > 0 && ("-h".equals(args[0]) || "--help".equals(args[0]))) {
+            System.out.println("Usage: java -jar instrument-simulator.jar [host] [port] [test-cases]");
+            System.out.println("  host        ASTM server host (default localhost)");
+            System.out.println("  port        ASTM server port (default 9001; use 5000 for the Sysmex XN listener)");
+            System.out.println("  test-cases  bundled resource or file path: ortho-vision-test-cases.json (default),");
+            System.out.println("              sysmex-xn-test-cases.json, test-cases.json, or /path/to/captures.json");
+            return;
+        }
         String host = (args.length > 0) ? args[0] : "localhost";
         int port = (args.length > 1) ? Integer.parseInt(args[1]) : 9001;
-        
+        String testCases = (args.length > 2) ? args[2] : MessageTemplateManager.DEFAULT_TEST_CASES;
+
         System.out.println("==========================================");
         System.out.println("Dynamic JSON-Based ASTM Simulator (with Frame Splitting)");
         System.out.println("==========================================");
+        System.out.printf("Test cases: %s%n", testCases);
         System.out.printf("Attempting to connect to server at %s:%d...%n", host, port);
-        
-        new AdvancedAstmSimulator(host, port).start();
+
+        new AdvancedAstmSimulator(host, port, testCases).start();
     }
 
     public void start() {
@@ -60,8 +72,8 @@ public class AdvancedAstmSimulator {
     }
 
     private void loadTestCases() {
-        log("Loading test cases from test-cases.json...");
-        this.testCases = MessageTemplateManager.loadTestCases();
+        log("Loading test cases from " + testCaseSource + "...");
+        this.testCases = MessageTemplateManager.loadTestCases(testCaseSource);
         if (this.testCases.isEmpty()) {
             log("WARNING: No test cases were loaded.");
         } else {
@@ -161,7 +173,7 @@ public class AdvancedAstmSimulator {
     private boolean sendSingleFrame(int frameNumber, String data, boolean isLast) throws IOException {
         String frame = buildFrame(frameNumber, data, isLast);
         log("-> Frame " + frameNumber + (isLast ? " <ETX>" : " <ETB>") + ": " + toReadable(frame));
-        outputStream.write(frame.getBytes(StandardCharsets.US_ASCII));
+        outputStream.write(frame.getBytes(StandardCharsets.ISO_8859_1));
         outputStream.flush();
 
         if (waitForByte(ACK, 10000) != ACK) {
@@ -176,7 +188,8 @@ public class AdvancedAstmSimulator {
     
     private String buildFrame(int frameNumber, String data, boolean isLastFrame) {
         char terminator = isLastFrame ? (char) ETX : (char) ETB;
-        String content = frameNumber + data + (char) CR + terminator;
+        // The record CR belongs to the last (ETX) frame only; intermediate ETB frames carry raw text.
+        String content = frameNumber + data + (isLastFrame ? String.valueOf((char) CR) : "") + terminator;
         int checksum = 0;
         for (char c : content.toCharArray()) checksum = (checksum + c) % 256;
         String checksumHex = String.format("%02X", checksum);
@@ -214,7 +227,8 @@ public class AdvancedAstmSimulator {
             log("-> ACK");
             outputStream.write(ACK);
             outputStream.flush();
-            messageAssembly.append(extractFrameData(frame)).append("\r\n");
+            messageAssembly.append(extractFrameData(frame));
+            if (frame.length() >= 8 && frame.charAt(frame.length() - 5) == ETX) messageAssembly.append("\r\n");
         }
         log("\n--- ORDER RECEIVED ---\n" + messageAssembly.toString().trim() + "\n----------------------");
     }
@@ -230,7 +244,7 @@ public class AdvancedAstmSimulator {
         int byteRead; boolean inFrame = false;
         while ((byteRead = inputStream.read()) != -1) {
             if (!inFrame && byteRead == STX) inFrame = true;
-            if (inFrame) { buffer.write(byteRead); if (byteRead == LF) return new String(buffer.toByteArray(), StandardCharsets.US_ASCII); }
+            if (inFrame) { buffer.write(byteRead); if (byteRead == LF) return new String(buffer.toByteArray(), StandardCharsets.ISO_8859_1); }
             if (byteRead == EOT) return new String(new byte[]{(byte)EOT});
         }
         return null;
