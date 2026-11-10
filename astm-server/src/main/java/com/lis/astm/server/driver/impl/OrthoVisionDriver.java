@@ -243,8 +243,9 @@ public class OrthoVisionDriver implements InstrumentDriver {
     // --- Record Building Methods ---
 
     private String buildHeader(HeaderRecord r) {
-        return buildLine("H", 13, 
-            r.getDelimiters(), 
+        // Delimiters are fixed by the specification; the model may carry a leading '|' from older JSON payloads.
+        return buildLine("H", 14, 
+            HeaderRecord.STANDARD_DELIMITERS, 
             r.getMessageControlId(), 
             r.getAccessPassword(), 
             r.getSenderName(),
@@ -316,7 +317,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
     }
 
     private String buildResult(ResultRecord r) {
-        return buildLine("R", 15,
+        return buildLine("R", 14,
             String.valueOf(r.getSequenceNumber()),
             r.getUniversalTestId(),
             r.getDataValue(),
@@ -413,7 +414,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
     /**
      * Builds a single record line, padding with empty fields to ensure correct length.
      * @param recordType The record type identifier (e.g., "H", "P").
-     * @param totalFields The total number of fields the record should have after the type ID.
+     * @param totalFields The total number of fields in the record, including the record type ID.
      * @param values The actual values for the fields.
      * @return A correctly formatted ASTM record string.
      */
@@ -426,7 +427,7 @@ public class OrthoVisionDriver implements InstrumentDriver {
               .forEach(fields::add);
         
         // Pad with empty fields to meet the required length
-        while (fields.size() <= totalFields) {
+        while (fields.size() < totalFields) {
             fields.add("");
         }
 

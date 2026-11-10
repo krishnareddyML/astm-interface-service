@@ -55,6 +55,20 @@ public class OrderRecord {
     @JsonProperty("instrumentSpecimenId")
     private String instrumentSpecimenId; // Unused per specification
     
+    // --- Sysmex XN specimen key components (specimenId holds the trimmed sample ID) ---
+
+    /** Rack number (up to 6 characters); echo back the value from the inquiry. */
+    @JsonProperty("rackNumber")
+    private String rackNumber;
+
+    /** Tube position in the rack (1-10); echo back the value from the inquiry. */
+    @JsonProperty("rackPosition")
+    private String rackPosition;
+
+    /** Sample number attribute: M manual, A auto-assigned, B barcode, C host assigned. */
+    @JsonProperty("sampleNumberAttribute")
+    private String sampleNumberAttribute;
+
     @JsonProperty("universalTestId")
     private String universalTestId; // Required: composite field for tests to be performed
     

@@ -1,58 +1,58 @@
-# Local-specific configuration
+# dev profile.
+# Secrets come from environment variables; set DB_PASSWORD (and RABBITMQ_PASSWORD) before starting.
 lis:
   instruments:
     - name: OrthoVision
       port: 9001
       driverClassName: com.lis.astm.server.driver.impl.OrthoVisionDriver
-      maxConnections: 5
-      enabled: true  # Enable for local testing
-      connectionTimeoutSeconds: 30  # Connection timeout for local testing
+      enabled: true
       orderQueueName: ortho-vision.orders.queue
       resultQueueName: ortho-vision.results.queue
-      resultsRoutingKey: result.inbound	
+      resultsRoutingKey: result.inbound
       exchangeName: ortho-vision-exchange
-      
-  # Local messaging configuration (disabled for local development)
+
+    - name: SysmexXN
+      port: 5000
+      driverClassName: com.lis.astm.server.driver.impl.SysmexXnDriver
+      enabled: ${SYSMEX_XN_ENABLED:true}
+      orderQueueName: sysmex-xn.orders.queue
+      resultQueueName: sysmex-xn.results.queue
+      resultsRoutingKey: result.inbound
+      exchangeName: sysmex-xn-exchange
+
   messaging:
-    enabled: true  # Enable for testing database-backed order processing
+    enabled: true
     retry:
       batch-size: 5
       max-attempts: 3
-      collision-delay-minutes: 2  # Shorter delays for local testing
+      collision-delay-minutes: 2
       connection-delay-minutes: 5
-      schedule-interval-ms: 60000  # 1 minute for local testing
-    
+      schedule-interval-ms: 60000
 
-# Custom properties for application
-log_path: E:/astm-interface-services-data/logs
+log_path: ${LOG_PATH:E:/astm-interface-services-data/logs}
 
-# Local Database Configuration (MS SQL Server)
 spring:
   datasource:
-    url: jdbc:sqlserver://10.200.0.43:1433;databaseName=infinity-lis-staging;trustServerCertificate=true
+    url: jdbc:sqlserver://${DB_HOST:10.200.0.43}:1433;databaseName=${DB_NAME:infinity-lis-staging};trustServerCertificate=true
     username: ${DB_USERNAME:kpmduser}
-    password: ${DB_PASSWORD:Medwrite@1}
+    password: ${DB_PASSWORD}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
-    hikari:                              
-            maximumPoolSize: 5
-            connectionTimeout: 180000
-            leakDetectionThreshold: 10000
-            poolName: Hikaripool_ASTM
+    hikari:
+      maximumPoolSize: 5
+      connectionTimeout: 180000
+      leakDetectionThreshold: 10000
+      poolName: Hikaripool_ASTM
 
-  
-  # Enable scheduling for retry processing
   task:
     scheduling:
       pool:
         size: 2
 
-  # Local RabbitMQ Configuration (for when messaging is enabled)
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
 
-# Local Server Configuration
 server:
   port: 8084

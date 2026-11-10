@@ -6,39 +6,40 @@ import com.lis.astm.server.driver.InstrumentDriver;
 import com.lis.astm.server.messaging.ResultQueuePublisher;
 import com.lis.astm.server.service.ServerMessageService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.util.Collections;
 import java.util.Map;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
- * A robust ASTM Server that manages instrument connections according to best practices.
+ * TCP server that owns one listener per configured instrument.
  *
- * Real-world policy:
- * - One instrument == one TCP port == one ACTIVE ASTM session at a time.
- * - Additional inbound connections while a session is active are refused.
- *
- * Thread model:
- * - One listener thread per instrument (blocks on serverSocket.accept()).
- * - One handler task per ACTIVE connection (runs in an executor service).
+ * <p>Policy: one instrument equals one TCP port equals one active ASTM session. When a new
+ * connection arrives for an instrument that already has a session, the old session is closed and
+ * replaced. Analyzers reconnect after a reboot or a network drop without closing the old socket,
+ * and refusing them would leave the interface dead until the service was restarted.
  */
 @Slf4j
 @Component
 public class ASTMServer {
 
-    private AppConfig appConfig;
-    private ResultQueuePublisher resultQueuePublisher;
-    private ServerMessageService serverMessageService;
-    //private OrderMessageService orderMessageService;
-    private ObjectMapper objectMapper;
+    private final AppConfig appConfig;
+    private final ResultQueuePublisher resultQueuePublisher;
+    private final ServerMessageService serverMessageService;
+    private final ObjectMapper objectMapper;
+    private final ObjectProvider<InstrumentConnectionHandler.OrderOutcomeListener> orderOutcomeListenerProvider;
 
     private ExecutorService connectionExecutor;
     private final Map<String, ServerSocket> serverSockets = new ConcurrentHashMap<>();
@@ -46,20 +47,19 @@ public class ASTMServer {
     private final Map<String, InstrumentConnectionHandler> activeConnections = new ConcurrentHashMap<>();
     private volatile boolean running = false;
 
-    
     public ASTMServer(AppConfig appConfig, ResultQueuePublisher resultQueuePublisher,
-                      ServerMessageService serverMessageService, ObjectMapper objectMapper) {
+                      ServerMessageService serverMessageService, ObjectMapper objectMapper,
+                      ObjectProvider<InstrumentConnectionHandler.OrderOutcomeListener> orderOutcomeListenerProvider) {
         this.appConfig = appConfig;
         this.resultQueuePublisher = resultQueuePublisher;
         this.serverMessageService = serverMessageService;
         this.objectMapper = objectMapper;
+        this.orderOutcomeListenerProvider = orderOutcomeListenerProvider;
     }
 
     @PostConstruct
     public void startServer() {
         log.info("Starting ASTM Interface Server...");
-        // A cached thread pool is efficient for this use case. It creates threads as needed
-        // and reuses them, which is perfect for managing multiple, independent connections.
         connectionExecutor = Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r);
             t.setName("ASTM-Conn-" + t.getId());
@@ -68,10 +68,20 @@ public class ASTMServer {
         });
         running = true;
 
+        if (appConfig.getInstruments() == null || appConfig.getInstruments().isEmpty()) {
+            log.warn("No instruments configured under 'lis.instruments'. Nothing to listen on.");
+            return;
+        }
         for (AppConfig.InstrumentConfig cfg : appConfig.getInstruments()) {
-            if (cfg.isEnabled()) {
-                startInstrumentListener(cfg);
+            if (!cfg.isEnabled()) {
+                log.info("Instrument '{}' is disabled; skipping listener.", cfg.getName());
+                continue;
             }
+            if (cfg.getDriverClassName() == null || cfg.getDriverClassName().trim().isEmpty()) {
+                log.error("Instrument '{}' has no driverClassName configured; listener on port {} NOT started.", cfg.getName(), cfg.getPort());
+                continue;
+            }
+            startInstrumentListener(cfg);
         }
     }
 
@@ -79,25 +89,20 @@ public class ASTMServer {
     public void stopServer() {
         log.info("Stopping ASTM Interface Server...");
         running = false;
-
-        // 1. Interrupt listener threads.
         listenerThreads.values().forEach(Thread::interrupt);
-
-        // 2. Close server sockets to unblock the accept() calls.
         serverSockets.values().forEach(this::safeClose);
-
-        // 3. Stop all active connection handlers.
         activeConnections.values().forEach(InstrumentConnectionHandler::stop);
 
-        // 4. Shut down the executor service.
-        connectionExecutor.shutdown();
-        try {
-            if (!connectionExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+        if (connectionExecutor != null) {
+            connectionExecutor.shutdown();
+            try {
+                if (!connectionExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    connectionExecutor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
                 connectionExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
             }
-        } catch (InterruptedException e) {
-            connectionExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
         }
         log.info("ASTM Server stopped.");
     }
@@ -107,16 +112,15 @@ public class ASTMServer {
         Thread listenerThread = new Thread(() -> {
             try (ServerSocket serverSocket = new ServerSocket(config.getPort())) {
                 serverSockets.put(instrumentName, serverSocket);
-                // Set a timeout on accept() so the loop can periodically check the 'running' flag.
-                serverSocket.setSoTimeout(2000); 
-                log.info("✅ Listener started for '{}' on port {}", instrumentName, config.getPort());
+                serverSocket.setSoTimeout(2000);
+                log.info("Listener started for '{}' on port {} using driver {}", instrumentName, config.getPort(), config.getDriverClassName());
 
                 while (running && !Thread.currentThread().isInterrupted()) {
                     try {
                         Socket clientSocket = serverSocket.accept();
                         handleNewConnection(clientSocket, config);
                     } catch (SocketTimeoutException e) {
-                        // This is expected and allows the loop to continue checking the running flag.
+                        // expected: lets the loop re-check the running flag
                     } catch (IOException e) {
                         if (running) log.error("I/O error on listener for '{}': {}", instrumentName, e.getMessage());
                     }
@@ -137,52 +141,62 @@ public class ASTMServer {
         final String instrumentName = config.getName();
         log.info("Accepted connection from {} for '{}'", clientSocket.getRemoteSocketAddress(), instrumentName);
 
-        // Enforce the "one active session per instrument" rule.
-        InstrumentConnectionHandler existingHandler = activeConnections.get(instrumentName);
-        if (existingHandler != null && existingHandler.isConnected()) {
-            log.warn("Instrument '{}' is already busy with an active session. Refusing new connection from {}.",
-                     instrumentName, clientSocket.getRemoteSocketAddress());
-            safeClose(clientSocket);
-            return;
+        InstrumentConnectionHandler existingHandler = activeConnections.remove(instrumentName);
+        if (existingHandler != null) {
+            log.warn("Instrument '{}' already had a session from {} (idle {} s). Replacing it with the new connection from {}.",
+                    instrumentName, existingHandler.getRemoteAddress(), existingHandler.getIdleTime().getSeconds(),
+                    clientSocket.getRemoteSocketAddress());
+            existingHandler.stop();
         }
 
         try {
-            // Set the read timeout for the connection handler's I/O operations.
-            int timeoutMs = config.getConnectionTimeoutSeconds() * 1000;
-            clientSocket.setSoTimeout(timeoutMs);
+            clientSocket.setKeepAlive(true);
+            clientSocket.setTcpNoDelay(true);
+            clientSocket.setSoTimeout(InstrumentConnectionHandler.READ_POLL_TIMEOUT_MS);
 
-            // Create a fresh driver instance for each new session.
-            InstrumentDriver driver = (InstrumentDriver) Class.forName(config.getDriverClassName()).getDeclaredConstructor().newInstance();
-            
+            InstrumentDriver driver = createDriver(config);
             InstrumentConnectionHandler handler = new InstrumentConnectionHandler(
-                clientSocket, driver, instrumentName, resultQueuePublisher, serverMessageService, objectMapper);
+                    clientSocket, driver, instrumentName, resultQueuePublisher, serverMessageService, objectMapper,
+                    orderOutcomeListenerProvider.getIfAvailable());
 
-            // Submit the handler to the executor and store a reference to it.
-            connectionExecutor.submit(handler);
             activeConnections.put(instrumentName, handler);
-
+            connectionExecutor.submit(() -> {
+                try {
+                    handler.run();
+                } finally {
+                    activeConnections.remove(instrumentName, handler);
+                }
+            });
         } catch (Exception e) {
             log.error("Failed to create and start connection handler for '{}': {}", instrumentName, e.getMessage(), e);
             safeClose(clientSocket);
         }
     }
 
+    private InstrumentDriver createDriver(AppConfig.InstrumentConfig config) throws ReflectiveOperationException {
+        String className = config.getDriverClassName();
+        if (className == null || className.trim().isEmpty()) {
+            throw new IllegalStateException("No driverClassName configured for instrument '" + config.getName() + "'");
+        }
+        return (InstrumentDriver) Class.forName(className.trim()).getDeclaredConstructor().newInstance();
+    }
+
     /**
-     * Retrieves the active connection handler for a specific instrument.
-     * This allows other services (like the Order service) to interact with the instrument.
-     * @param instrumentName The name of the instrument.
-     * @return The active handler, or null if no session is active.
+     * @return the active, connected handler for the instrument, or null when no session is active.
      */
     public InstrumentConnectionHandler getConnectionHandler(String instrumentName) {
         InstrumentConnectionHandler handler = activeConnections.get(instrumentName);
-        // Ensure the handler is still valid and connected before returning it.
         if (handler != null && handler.isConnected()) {
             return handler;
         } else if (handler != null) {
-            // If the handler is not connected, it's a stale entry. Remove it.
             activeConnections.remove(instrumentName, handler);
         }
         return null;
+    }
+
+    /** Read-only view of the active sessions, for monitoring. */
+    public Map<String, InstrumentConnectionHandler> getActiveConnections() {
+        return Collections.unmodifiableMap(activeConnections);
     }
 
     private void safeClose(Closeable resource) {

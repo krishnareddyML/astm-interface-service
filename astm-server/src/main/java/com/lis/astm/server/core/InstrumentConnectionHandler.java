@@ -7,206 +7,251 @@ import com.lis.astm.server.messaging.ResultQueuePublisher;
 import com.lis.astm.server.model.OrderMessage;
 import com.lis.astm.server.model.ServerMessage;
 import com.lis.astm.server.protocol.ASTMProtocolStateMachine;
+import com.lis.astm.server.protocol.ASTMProtocolStateMachine.SendResult;
 import com.lis.astm.server.service.ServerMessageService;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-
-import org.springframework.beans.factory.annotation.Value;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.LinkedBlockingDeque;
 
 /**
- * A modern, elegant, and non-blocking handler for a single instrument connection.
- * This class runs a single-threaded event loop to manage all I/O,
- * eliminating the deadlocks and race conditions of the previous design.
+ * Handles a single instrument TCP session with a single-threaded event loop.
+ *
+ * <p>Each loop iteration first drains one queued outbound order (if the line is idle and no
+ * contention back-off is active), then waits a short time for inbound data. The socket read
+ * timeout is kept short ({@link #READ_POLL_TIMEOUT_MS}) so outbound orders are never delayed
+ * by more than that while the line is idle.
  */
 @Slf4j
 public class InstrumentConnectionHandler implements Runnable {
+
+    /** Socket read timeout while idle. Bounds the latency of outbound orders. */
+    public static final int READ_POLL_TIMEOUT_MS = 500;
+
+    /**
+     * Callbacks for the persistence layer. Kept as an interface so the handler does not depend on
+     * Spring beans and can be unit tested.
+     */
+    public interface OrderOutcomeListener {
+        void onSent(OrderMessage order);
+        void onFailed(OrderMessage order, String reason);
+    }
 
     private final Socket socket;
     private final InstrumentDriver driver;
     private final String instrumentName;
     private final ResultQueuePublisher resultPublisher;
     private final ServerMessageService serverMessageService;
-    //private final OrderMessageService orderMessageService;
-    private final ASTMProtocolStateMachine protocolStateMachine;
-    //private final BlockingQueue<AstmMessage> outgoingMessageQueue = new LinkedBlockingQueue<>();
-    private final BlockingQueue<OrderMessage> outgoingMessageQueue = new LinkedBlockingQueue<>();
-    private volatile boolean running = true;
     private final ObjectMapper objectMapper;
+    private final OrderOutcomeListener orderOutcomeListener;
+    private final ASTMProtocolStateMachine protocolStateMachine;
+    private final BlockingDeque<OrderMessage> outgoingMessageQueue = new LinkedBlockingDeque<>();
+    private final Instant connectedAt = Instant.now();
 
-    @Value("${lis.messaging.retry.connection-delay-minutes:5}")
-    private long connectionRetryDelayMinutes;
+    private volatile boolean running = true;
+    private volatile Instant sendBlockedUntil = Instant.EPOCH;
+    private volatile Instant lastActivity = Instant.now();
 
     public InstrumentConnectionHandler(Socket socket, InstrumentDriver driver, String instrumentName,
-                                     ResultQueuePublisher resultPublisher, ServerMessageService serverMessageService,
-                                     ObjectMapper objectMapper
-                                    // OrderMessageService orderMessageService
-                                     ) throws IOException {
+                                       ResultQueuePublisher resultPublisher, ServerMessageService serverMessageService,
+                                       ObjectMapper objectMapper, OrderOutcomeListener orderOutcomeListener) throws IOException {
         this.socket = socket;
         this.driver = driver;
         this.instrumentName = instrumentName;
         this.resultPublisher = resultPublisher;
         this.serverMessageService = serverMessageService;
         this.objectMapper = objectMapper;
-       // this.orderMessageService = orderMessageService;
+        this.orderOutcomeListener = orderOutcomeListener;
         this.protocolStateMachine = new ASTMProtocolStateMachine(socket, instrumentName);
     }
-    
-    // public void queueMessageForSending(AstmMessage message) {
-    //     log.info("Queued outgoing message for instrument {} (queue size: {})", 
-    //              instrumentName, outgoingMessageQueue.size() + 1);
-    //     outgoingMessageQueue.offer(message);
-    // }
 
-     /**
-     * The new NON-BLOCKING handoff method called by the OrderProcessingService.
-     */
+    /** Non-blocking hand-off: the event loop sends the order when the line is free. */
     public void queueOrderForSending(OrderMessage orderMessage) {
-        log.info("Queued outgoing message for instrument {} (queue size: {})", instrumentName, outgoingMessageQueue.size() + 1);
         outgoingMessageQueue.offer(orderMessage);
+        log.info("[{}] Queued outgoing order {} (queue size: {})", instrumentName, orderMessage.getId(), outgoingMessageQueue.size());
     }
 
     @Override
     public void run() {
-        log.info("Connection handler started for {} from {}", instrumentName, getRemoteAddress());
+        log.info("[{}] Connection handler started for {}", instrumentName, getRemoteAddress());
         try {
             while (running && isConnected()) {
-                if (!outgoingMessageQueue.isEmpty() && protocolStateMachine.getCurrentState() == ASTMProtocolStateMachine.State.IDLE) {
-                    OrderMessage orderMessage = outgoingMessageQueue.poll();
-                    if (orderMessage != null) {
-                        AstmMessage astmMessage = objectMapper.readValue(orderMessage.getMessageContent(), AstmMessage.class);
-                        boolean success  = sendOrder(astmMessage);
-                        if (success) {
-                          //  orderMessageService.markAsSuccess(orderMessage.getId());
-                        } else {
-                            // The message send failed, it will be retried by the scheduler
-                            //orderMessageService.scheduleRetry(orderMessage, connectionRetryDelayMinutes,"Send failed");
-                        }
-                    }
-                }
-
+                sendNextQueuedOrder();
                 handleIncomingData();
-
-                Thread.sleep(100);
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.info("Connection handler for {} was interrupted.", instrumentName);
         } catch (Exception e) {
             if (running) {
-                log.error("Connection handler for {} ended with an error: {}", instrumentName, e.getMessage());
+                log.error("[{}] Connection handler ended with an error: {}", instrumentName, e.getMessage(), e);
             }
         } finally {
             cleanup();
         }
     }
 
-    // private void sendOrder(AstmMessage message) {
-    //     log.debug("Dequeued order for instrument {}. Attempting to send.", instrumentName);
-    //     try {
-    //         String rawMessage = driver.build(message);
-    //         if (protocolStateMachine.sendMessage(rawMessage)) {
-    //             log.info("Successfully sent order to {}", instrumentName);
-    //         } else {
-    //             log.error("Failed to send order to {}. It will be retried by the service.", instrumentName);
-    //         }
-    //     } catch (Exception e) {
-    //         log.error("Exception while sending message to {}: {}", instrumentName, e, e);
-    //     }
-    // }
+    private void sendNextQueuedOrder() throws IOException {
+        if (outgoingMessageQueue.isEmpty()) return;
+        if (protocolStateMachine.getCurrentState() != ASTMProtocolStateMachine.State.IDLE) return;
+        if (Instant.now().isBefore(sendBlockedUntil)) return;
+        // Give priority to an instrument that is already talking to us.
+        if (protocolStateMachine.hasPendingInput()) return;
 
-    public boolean sendOrder(AstmMessage message) {
-    log.debug("Attempting to send order directly to instrument {}.", instrumentName);
-    try {
-        String rawMessage = driver.build(message);
-        if (protocolStateMachine.sendMessage(rawMessage)) {
-            log.info("Successfully sent order to {}", instrumentName);
-            return true;
-        } else {
-            log.error("Failed to send order to {}. State machine rejected send.", instrumentName);
-            return false;
+        OrderMessage orderMessage = outgoingMessageQueue.poll();
+        if (orderMessage == null) return;
+
+        SendResult result;
+        try {
+            AstmMessage astmMessage = objectMapper.readValue(orderMessage.getMessageContent(), AstmMessage.class);
+            result = sendOrder(astmMessage);
+        } catch (IOException e) {
+            // Socket level failure: the connection is unusable. Requeue so the retry service picks it up.
+            notifyFailed(orderMessage, "I/O error while sending: " + e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("[{}] Order {} could not be built or sent: {}", instrumentName, orderMessage.getId(), e.getMessage(), e);
+            notifyFailed(orderMessage, "Build/send exception: " + e.getMessage());
+            return;
         }
-    } catch (Exception e) {
-        log.error("Exception while sending message to {}: {}", instrumentName, e.getMessage(), e);
-        return false;
+
+        lastActivity = Instant.now();
+        switch (result) {
+            case SENT:
+                if (orderOutcomeListener != null) orderOutcomeListener.onSent(orderMessage);
+                break;
+            case CONTENTION:
+                // Host must yield and wait 20 s before trying ENQ again (XN 4.2.2 (2)). Keep the order at the head.
+                sendBlockedUntil = Instant.now().plusMillis(ASTMProtocolStateMachine.CONTENTION_BACKOFF_MS);
+                outgoingMessageQueue.offerFirst(orderMessage);
+                log.info("[{}] Order {} deferred for {} ms after ENQ contention.", instrumentName, orderMessage.getId(),
+                        ASTMProtocolStateMachine.CONTENTION_BACKOFF_MS);
+                break;
+            case BUSY:
+                outgoingMessageQueue.offerFirst(orderMessage);
+                break;
+            case FAILED:
+            default:
+                notifyFailed(orderMessage, "Instrument did not acknowledge the order");
+                break;
+        }
     }
-}
+
+    /**
+     * Builds and sends one message on the line. Public so that tests and tooling can drive it.
+     */
+    public SendResult sendOrder(AstmMessage message) throws Exception {
+        String rawMessage = driver.build(message);
+        log.debug("[{}] Sending order:\n{}", instrumentName, ASTMProtocolStateMachine.toVisibleAscii(rawMessage));
+        SendResult result = protocolStateMachine.sendMessage(rawMessage);
+        if (result == SendResult.SENT) {
+            log.info("[{}] Successfully sent order.", instrumentName);
+        } else {
+            log.warn("[{}] Order not sent: {}", instrumentName, result);
+        }
+        return result;
+    }
+
+    private void notifyFailed(OrderMessage orderMessage, String reason) {
+        log.error("[{}] Order {} failed: {}", instrumentName, orderMessage.getId(), reason);
+        if (orderOutcomeListener != null) orderOutcomeListener.onFailed(orderMessage, reason);
+    }
 
     private void handleIncomingData() {
         try {
             String rawMessage = protocolStateMachine.receiveMessage();
+            lastActivity = Instant.now();
+            if (rawMessage == null || rawMessage.isEmpty()) return;
 
-            if (rawMessage != null && !rawMessage.isEmpty()) {
-                //log.info("Received message of {} chars from {}", rawMessage.length(), instrumentName);
-                String messageType = serverMessageService.determineMessageType(rawMessage);
-                log.info("Detected Message Type: {}", messageType);
-                if ("KEEP_ALIVE".equals(messageType)) {
-                    log.info("Keep-alive received from {}. Connection is active.", instrumentName);
-                    return;
-                }
-
-                ServerMessage savedMessage = serverMessageService.saveIncomingMessage(rawMessage, instrumentName, getRemoteAddress(), messageType);
-                AstmMessage parsedMessage = driver.parse(rawMessage);
-                
-                if (parsedMessage != null && (parsedMessage.hasResults() || parsedMessage.hasQueries())) {
-                    Long messageId=0L;
-                    try{
-
-                        if(savedMessage!=null){
-                        messageId = savedMessage.getId();
-                        String parsedJsonMessage = this.objectMapper.writeValueAsString(parsedMessage);
-                        serverMessageService.markAsProcessed(messageId, parsedJsonMessage);
-                        }
-
-                    }catch(Exception e){
-                        log.debug("Error while marking server message with Id: {} as processed in DB: {}",savedMessage.getId(), e.getMessage());
-                        return;
-                    }
-                    
-                    // Publishing to Server Message the Queue
-                    resultPublisher.publishResult(messageId, parsedMessage);
-                    
-                }
+            String messageType = serverMessageService.determineMessageType(rawMessage);
+            log.info("[{}] Received {} message ({} chars)", instrumentName, messageType, rawMessage.length());
+            if ("KEEP_ALIVE".equals(messageType)) {
+                return;
             }
+
+            ServerMessage savedMessage = serverMessageService.saveIncomingMessage(rawMessage, instrumentName, getRemoteAddress(), messageType);
+            AstmMessage parsedMessage = driver.parse(rawMessage);
+            if (parsedMessage == null) return;
+            parsedMessage.setInstrumentName(instrumentName);
+
+            if (!(parsedMessage.hasResults() || parsedMessage.hasQueries())) {
+                log.info("[{}] Message contains neither results nor queries; stored only.", instrumentName);
+                return;
+            }
+
+            Long messageId = savedMessage != null ? savedMessage.getId() : 0L;
+            try {
+                if (savedMessage != null) {
+                    serverMessageService.markAsProcessed(messageId, objectMapper.writeValueAsString(parsedMessage));
+                }
+            } catch (Exception e) {
+                log.error("[{}] Could not mark server message {} as processed: {}", instrumentName, messageId, e.getMessage());
+                return;
+            }
+
+            resultPublisher.publishResult(messageId, parsedMessage);
         } catch (SocketTimeoutException e) {
-            log.debug("Socket timeout on {}. No incoming data. This is normal.", instrumentName);
+            // Idle poll elapsed: normal.
         } catch (IOException e) {
-            log.error("I/O error on connection for {}: {}. Closing connection.", instrumentName, e.getMessage());
+            if (running) {
+                log.error("[{}] I/O error: {}. Closing connection.", instrumentName, e.getMessage());
+            }
             stop();
         } catch (Exception e) {
-            log.error("Error processing incoming message from {}.", instrumentName, e);
+            log.error("[{}] Error processing incoming message.", instrumentName, e);
         }
     }
-    
+
     public boolean isConnected() {
-        return socket != null && socket.isConnected() && !socket.isClosed();
+        return socket != null && socket.isConnected() && !socket.isClosed() && running;
     }
 
     public boolean isBusy() {
         return protocolStateMachine.getCurrentState() != ASTMProtocolStateMachine.State.IDLE;
     }
-    
-    public void stop() {
-        this.running = false;
+
+    public int getQueuedOrderCount() {
+        return outgoingMessageQueue.size();
     }
 
-    private String getRemoteAddress() {
-        return socket.getRemoteSocketAddress().toString();
+    public Duration getIdleTime() {
+        return Duration.between(lastActivity, Instant.now());
+    }
+
+    public Instant getConnectedAt() {
+        return connectedAt;
+    }
+
+    /** Requests the loop to stop and closes the socket so a blocked read returns immediately. */
+    public void stop() {
+        this.running = false;
+        closeSocket();
+    }
+
+    public String getRemoteAddress() {
+        return socket.getRemoteSocketAddress() == null ? "unknown" : socket.getRemoteSocketAddress().toString();
     }
 
     private void cleanup() {
         running = false;
-        log.info("Cleaning up and closing connection for {}.", instrumentName);
+        closeSocket();
+        // Anything still queued could not be delivered on this session; hand it back to the retry service.
+        OrderMessage pending;
+        while ((pending = outgoingMessageQueue.poll()) != null) {
+            notifyFailed(pending, "Connection closed before the order could be sent");
+        }
+        log.info("[{}] Connection to {} closed.", instrumentName, getRemoteAddress());
+    }
+
+    private void closeSocket() {
         try {
             if (socket != null && !socket.isClosed()) {
                 socket.close();
             }
         } catch (IOException e) {
-            log.warn("Error while closing socket for {}: {}", instrumentName, e.getMessage());
+            log.warn("[{}] Error while closing socket: {}", instrumentName, e.getMessage());
         }
     }
 }

@@ -1,32 +1,45 @@
-# Production-specific configuration
+# Production profile.
+# All secrets MUST be provided through environment variables (no defaults here):
+#   DB_HOST, DB_NAME, DB_USERNAME, DB_PASSWORD
+#   RABBITMQ_HOST, RABBITMQ_PORT, RABBITMQ_USERNAME, RABBITMQ_PASSWORD
+# Spring profile YAML lists are replaced, not merged, so every instrument must be fully
+# described here (name, port, driverClassName and queue settings).
 lis:
   instruments:
     - name: OrthoVision
-      port: 9001
-      enabled: true
-      maxConnections: 10  # Higher connection pool for production
-      connectionTimeoutSeconds: 60  # Longer timeout for production stability
-    
-  
-  # Production messaging configuration (fully enabled)
+      port: ${ORTHO_VISION_PORT:9001}
+      driverClassName: com.lis.astm.server.driver.impl.OrthoVisionDriver
+      enabled: ${ORTHO_VISION_ENABLED:true}
+      orderQueueName: ortho-vision.orders.queue
+      resultQueueName: ortho-vision.results.queue
+      resultsRoutingKey: result.inbound
+      exchangeName: ortho-vision-exchange
+
+    - name: SysmexXN
+      port: ${SYSMEX_XN_PORT:5000}
+      driverClassName: com.lis.astm.server.driver.impl.SysmexXnDriver
+      enabled: ${SYSMEX_XN_ENABLED:false}
+      orderQueueName: sysmex-xn.orders.queue
+      resultQueueName: sysmex-xn.results.queue
+      resultsRoutingKey: result.inbound
+      exchangeName: sysmex-xn-exchange
+
   messaging:
-    enabled: true  # Enable RabbitMQ for production
+    enabled: true
     retry:
       batch-size: 20
       max-attempts: 10
       collision-delay-minutes: 30
       connection-delay-minutes: 60
-      schedule-interval-ms: 300000  # 5 minutes for production
+      schedule-interval-ms: 300000
 
-# Logging configuration  
-log_path: D:/astm-interface-services-data/logs
+log_path: ${LOG_PATH:D:/astm-interface-services-data/logs}
 
-# Production Database Configuration
 spring:
   datasource:
-    url: jdbc:sqlserver://${DB_HOST:prod-sql.internal}:1433;databaseName=ASTM_Interface_Prod;encrypt=true;trustServerCertificate=false
-    username: ${DB_USERNAME}  # Must be provided via environment variables
-    password: ${DB_PASSWORD}  # Must be provided via environment variables
+    url: jdbc:sqlserver://${DB_HOST}:1433;databaseName=${DB_NAME:ASTM_Interface_Prod};encrypt=true;trustServerCertificate=false
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
     hikari:
       maximum-pool-size: 20
@@ -34,26 +47,21 @@ spring:
       idle-timeout: 300000
       max-lifetime: 900000
       leak-detection-threshold: 60000
-  
-  # Enable scheduling for retry processing
+
   task:
     scheduling:
       pool:
         size: 5
 
-  # Production RabbitMQ Configuration
   rabbitmq:
-    host: ${RABBITMQ_HOST:prod-rabbitmq.internal}  # Production RabbitMQ cluster
+    host: ${RABBITMQ_HOST}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USERNAME}  # Must be provided via environment variables
-    password: ${RABBITMQ_PASSWORD}  # Must be provided via environment variables
-    connection-timeout: 60s  # Longer timeout for production
-    requested-heartbeat: 30s  # More frequent heartbeat for production monitoring
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    connection-timeout: 60s
+    requested-heartbeat: 30s
 
-
-# Production Server Configuration
 server:
   port: ${SERVER_PORT:8080}
-  # Production security headers
   servlet:
     context-path: /astm-interface
