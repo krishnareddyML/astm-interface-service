@@ -35,6 +35,33 @@ import java.util.List;
 @NoArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ResultRecord {
+
+    /** Values used in {@link #resultCategory}. */
+    public static final class Category {
+        /** Reportable clinical parameter (WBC, HGB, ABO, ...). */
+        public static final String CLINICAL = "CLINICAL";
+        /** QC material result. */
+        public static final String QC = "QC";
+        /** Interpretive program message: ABNORMAL (flag only). */
+        public static final String IP_ABNORMAL = "IP_ABNORMAL";
+        /** Interpretive program message: SUSPECT with a Q-flag grade 0-300. */
+        public static final String IP_SUSPECT = "IP_SUSPECT";
+        /** Action message (ACTION_MESSAGE_*). */
+        public static final String ACTION_MESSAGE = "ACTION_MESSAGE";
+        /** Positive/negative and error judgements (Positive_Diff, Error_Func, ...). */
+        public static final String JUDGEMENT = "JUDGEMENT";
+        /** Scattergram image reference or raw data (SCAT_*). */
+        public static final String IMAGE = "IMAGE";
+        /** Particle size distribution data (DIST_*). */
+        public static final String DISTRIBUTION = "DISTRIBUTION";
+        /** Research, service and only-host items (names starting with '~'). */
+        public static final String RESEARCH = "RESEARCH";
+        /** Slide preparation result (SP-10 / SP-50). */
+        public static final String SLIDE = "SLIDE";
+        public static final String OTHER = "OTHER";
+
+        private Category() {}
+    }
     
     @JsonProperty("recordType")
     private String recordType = "R"; // Always "R" for Result
@@ -45,6 +72,21 @@ public class ResultRecord {
     @JsonProperty("universalTestId")
     private String universalTestId; // Composite: Analysis^Donor Specimen ID (for crossmatch)
     
+    /** Plain analysis parameter / test name extracted from the composite test ID (e.g. "WBC", "ABO"). */
+    @JsonProperty("parameterName")
+    private String parameterName;
+
+    /** Sysmex XN: dilution ratio component of the test ID ("1" manual/sampler, "5" capillary). */
+    @JsonProperty("dilutionRatio")
+    private String dilutionRatio;
+
+    /**
+     * Classification of the result record so consumers can tell reportable values from flags,
+     * images and research items. One of {@link Category}. Null when the driver does not classify.
+     */
+    @JsonProperty("resultCategory")
+    private String resultCategory;
+
     @JsonProperty("dataValue")
     private String dataValue; // Analysis result (actual measured/derived value)
     

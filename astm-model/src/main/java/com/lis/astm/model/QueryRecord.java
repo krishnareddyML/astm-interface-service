@@ -67,6 +67,24 @@ public class QueryRecord {
     @JsonProperty("userField2")
     private String userField2; // Unused per specification
     
+    // --- Normalised specimen key (filled by instrument drivers; raw value stays in startingRangeId) ---
+
+    /** Sample / specimen identifier as the LIS knows it (trimmed, no padding). */
+    @JsonProperty("sampleId")
+    private String sampleId;
+
+    /** Sysmex XN: rack number (up to 6 characters) when the inquiry is keyed by rack/position. */
+    @JsonProperty("rackNumber")
+    private String rackNumber;
+
+    /** Sysmex XN: tube position in the rack (1-10) when the inquiry is keyed by rack/position. */
+    @JsonProperty("rackPosition")
+    private String rackPosition;
+
+    /** Sysmex XN: sample number attribute M (manual), A (auto), B (barcode), C (host assigned). */
+    @JsonProperty("sampleNumberAttribute")
+    private String sampleNumberAttribute;
+
     @JsonProperty("requestInformationStatusCodes")
     private String requestInformationStatusCodes = "O"; // O = Request test orders and demographics only
     
