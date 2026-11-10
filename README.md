@@ -95,6 +95,14 @@ astm-interface-service/
 
 ## 🧬 ASTM Protocol Support
 
+### Supported Instruments
+| Instrument | Driver | Default port | Notes |
+|---|---|---|---|
+| ORTHO VISION (blood bank) | `com.lis.astm.server.driver.impl.OrthoVisionDriver` | 9001 | Results with M (well) records, queries, orders. Tested against the analyzer. |
+| Sysmex XN series (hematology) | `com.lis.astm.server.driver.impl.SysmexXnDriver` | 5000 | XN ASTM Host Interface Spec (NA) rev. 11. See [docs/sysmex-xn-integration.md](docs/sysmex-xn-integration.md). Bench test pending. |
+
+Each instrument is one entry under `lis.instruments` with its own TCP port, driver class and RabbitMQ queues.
+
 ### Supported Record Types
 | Record | Type | Description | Implementation Status |
 |--------|------|-------------|---------------------|
@@ -103,16 +111,20 @@ astm-interface-service/
 | **O** | Order | Test orders & specimen information | ✅ Complete |
 | **R** | Result | Test results & analysis data | ✅ Complete |
 | **Q** | Query | Information requests | ✅ Complete |
+| **C** | Comment | Patient / sample / rerun-reflex comments (Sysmex XN) | ✅ Complete |
 | **M** | M-Result | ORTHO Vision specific results | ✅ Complete |
+| **S** | Scientific | Reagent information (Sysmex XN, ignored) | ℹ️ Logged only |
 | **L** | Terminator | Message completion | ✅ Complete |
 
 ### Protocol Features
-- ✅ **Multi-frame messages** with ETB/ETX handling
-- ✅ **Checksum validation** for data integrity
-- ✅ **Keep-alive mechanism** with 6-minute timeouts
-- ✅ **Bidirectional communication** (LIS ↔ Instrument)
-- ✅ **Thread-safe operations** for concurrent connections
-- ✅ **Graceful error handling** and recovery
+- ✅ **ASTM E1381-02 data link** over TCP: ENQ/ACK/NAK/EOT, frame numbers 1..7,0, 8-bit checksum
+- ✅ **Multi-frame records** with ETB/ETX handling, duplicate-frame tolerance, 6 retransmissions on NAK
+- ✅ **Spec timing**: 15 s sender timer, 30 s receiver timer, 20 s back-off after ENQ contention
+- ✅ **Extended characters** (ISO-8859-1) in names survive checksum validation
+- ✅ **Bidirectional communication** (LIS ↔ Instrument) with outbound orders sent within 500 ms of queueing
+- ✅ **Session replacement**: a reconnecting analyzer replaces its stale session instead of being refused
+- ✅ **Durable orders**: every order is persisted and ends as SUCCESS, retried, or FAILED (never stuck)
+- ✅ **Automated tests** for framing, state machine, connection handler and both drivers (`mvn test`)
 
 ## 🚀 Quick Start Guide
 
@@ -191,25 +203,42 @@ GO
 ```
 
 #### Application Properties
+Secrets are **not** stored in the repository. Set them in the environment (or in
+`./config/application-local.yml` next to the jar, which Spring Boot loads automatically):
+
+```powershell
+set DB_PASSWORD=...            # required in every profile
+set DB_HOST=192.168.20.123     # optional overrides: DB_NAME, DB_USERNAME
+set RABBITMQ_PASSWORD=...      # RABBITMQ_HOST, RABBITMQ_PORT, RABBITMQ_USERNAME
+```
+
 ```yaml
-# astm-server/src/main/resources/application-local.yml
-spring:
-  profiles:
-    active: local
-  datasource:
-    url: jdbc:sqlserver://localhost:1433;databaseName=ASTM_Interface_Dev;trustServerCertificate=true
-    username: sa
-    password: your_password
-    
+# astm-server/src/main/resources/application-local.yml (excerpt)
 lis:
   instruments:
     - name: OrthoVision
       port: 9001
-      enabled: true
       driverClassName: com.lis.astm.server.driver.impl.OrthoVisionDriver
+      enabled: true
+      orderQueueName: ortho-vision.orders.queue
+      resultQueueName: ortho-vision.results.queue
+      resultsRoutingKey: result.inbound
+      exchangeName: ortho-vision-exchange
+    - name: SysmexXN
+      port: 5000
+      driverClassName: com.lis.astm.server.driver.impl.SysmexXnDriver
+      enabled: true
+      orderQueueName: sysmex-xn.orders.queue
+      resultQueueName: sysmex-xn.results.queue
+      resultsRoutingKey: result.inbound
+      exchangeName: sysmex-xn-exchange
   messaging:
-    enabled: true  # Enable for database-backed message processing
+    enabled: true
 ```
+
+Profile YAML lists are replaced, not merged, so every profile must list each instrument in full
+(name, port, driverClassName and queue names). A listener is not started for an instrument that has
+no `driverClassName`.
 
 ### Running Development Services
 ```powershell
@@ -220,8 +249,9 @@ cd astm-server
 mvn spring-boot:run -Dspring-boot.run.profiles=local
 
 # 2. Instrument Simulator (testing)
-cd instrument-simulator  
-mvn exec:java -Dexec.mainClass="com.lis.astm.simulator.AdvancedAstmSimulator"
+#    args: [host] [port] [test-cases]  where test-cases is a bundled resource or a file path
+java -jar instrument-simulator/target/instrument-simulator.jar localhost 9001 ortho-vision-test-cases.json
+java -jar instrument-simulator/target/instrument-simulator.jar localhost 5000 sysmex-xn-test-cases.json
 
 # 3. ASTM Parser GUI (message analysis)
 cd astm-parser-swing
@@ -248,15 +278,23 @@ mvn spring-boot:repackage
 
 #### Environment Variables
 ```powershell
-# Required production environment variables
+# Required production environment variables (no defaults exist in application-prod.yml)
 set SPRING_PROFILES_ACTIVE=prod
 set DB_HOST=prod-sql-server.company.com
-set DB_USERNAME=astm_service_user  
-set DB_PASSWORD=SecurePassword123!
+set DB_NAME=ASTM_Interface_Prod
+set DB_USERNAME=astm_service_user
+set DB_PASSWORD=<secret>
 set RABBITMQ_HOST=prod-rabbitmq.company.com
 set RABBITMQ_USERNAME=astm_queue_user
-set RABBITMQ_PASSWORD=QueuePassword456!
+set RABBITMQ_PASSWORD=<secret>
 set SERVER_PORT=8080
+
+# Optional per-instrument switches
+set ORTHO_VISION_ENABLED=true
+set ORTHO_VISION_PORT=9001
+set SYSMEX_XN_ENABLED=true
+set SYSMEX_XN_PORT=5000
+set LOG_PATH=D:\astm-interface-services-data\logs
 ```
 
 #### Production application.yml
@@ -274,10 +312,21 @@ spring:
 lis:
   instruments:
     - name: OrthoVision
-      port: 9001
-      enabled: true
-      maxConnections: 10
-      connectionTimeoutSeconds: 60
+      port: ${ORTHO_VISION_PORT:9001}
+      driverClassName: com.lis.astm.server.driver.impl.OrthoVisionDriver
+      enabled: ${ORTHO_VISION_ENABLED:true}
+      orderQueueName: ortho-vision.orders.queue
+      resultQueueName: ortho-vision.results.queue
+      resultsRoutingKey: result.inbound
+      exchangeName: ortho-vision-exchange
+    - name: SysmexXN
+      port: ${SYSMEX_XN_PORT:5000}
+      driverClassName: com.lis.astm.server.driver.impl.SysmexXnDriver
+      enabled: ${SYSMEX_XN_ENABLED:false}
+      orderQueueName: sysmex-xn.orders.queue
+      resultQueueName: sysmex-xn.results.queue
+      resultsRoutingKey: result.inbound
+      exchangeName: sysmex-xn-exchange
   messaging:
     enabled: true
     retry:
@@ -471,19 +520,21 @@ spring.datasource.url: jdbc:sqlserver://astm-sql-server.database.windows.net:143
 
 ### Unit Testing
 ```powershell
-# Run all unit tests
+# Run all unit tests (also run by GitHub Actions on every push and pull request)
 mvn test
 
-# Run tests with coverage
-mvn test jacoco:report
-
-# Run specific module tests  
-cd astm-model
-mvn test
-
+# Run specific module tests
 cd astm-server
 mvn test
 ```
+
+What is covered:
+- `ChecksumUtilsTest`: frame layout, ETB/ETX, checksum over extended characters
+- `ASTMProtocolStateMachineTest`: receive/send over a real socket pair (split records, bad checksum, duplicate and out-of-sequence frames, ENQ contention, six NAKs)
+- `InstrumentConnectionHandlerTest`: result publishing, keep-alive, order send success/failure/contention, queue hand-back on disconnect
+- `SysmexXnDriverTest`: every example message from the XN specification, exact order-response output
+- `OrthoVisionDriverTest`: captured analyzer messages and order building
+- `AstmEscapeTest`: ASTM escape sequences
 
 ### Integration Testing
 
@@ -507,9 +558,9 @@ L|1|N
 cd astm-server
 mvn spring-boot:run -Dspring.profiles.active=local
 
-# Terminal 2: Start simulator
-cd instrument-simulator
-java -jar target/instrument-simulator.jar
+# Terminal 2: Start simulator (Ortho Vision on 9001, or Sysmex XN cases on 5000)
+java -jar instrument-simulator/target/instrument-simulator.jar localhost 9001
+java -jar instrument-simulator/target/instrument-simulator.jar localhost 5000 sysmex-xn-test-cases.json
 
 # In simulator:
 # 1. Select "Send Full Result Message"  

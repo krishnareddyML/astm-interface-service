@@ -7,6 +7,23 @@ This document answers: **can it talk to a Sysmex XN as it stands, and what has t
 
 Date: 2026-11-10. Build state: `mvn compile` passes on all four modules (JDK 21, target 1.8).
 
+> **Status update (same branch):** the findings below have been acted on. Every item marked
+> *Fixed* is covered by an automated test (`mvn test`). See
+> [sysmex-xn-integration.md](sysmex-xn-integration.md) for the resulting LIS contract.
+>
+> | Finding | Status |
+> |---|---|
+> | P1 Latin-1 checksum, P2 ENQ contention, P3 30 s receiver timer, P4 duplicate frames | Fixed |
+> | P5 IPU host mode setting | Documented in the integration guide |
+> | R1-R7, R9-R11 parsing gaps | Fixed by `SysmexXnDriver` (sample key, units, parameter name, dates, patient fields, comments, escapes, result classification, QC typing) |
+> | R8, R12 | Documented / ignored by design |
+> | B1-B5 building gaps | Fixed by `SysmexXnDriver.build` (exact spec output; parameter list mapping accepted from the LIS) |
+> | C1 stale session, C2 lost orders, C3 30 s send latency, C4 dead `@Value` | Fixed |
+> | C5 prod profile, C6 committed secrets, C7 test listener, C9 Hikari TRACE | Fixed (passwords already in git history must still be rotated) |
+> | C8 no tests | Fixed: 50+ tests plus a GitHub Actions workflow |
+> | C10 Spring Boot 2.7 / Java 8 | Open: plan an upgrade after the XN bench test |
+> | Bench test against a real XN IPU | **Open** - required before go-live; check the ward field position noted in the integration guide |
+
 ---
 
 ## 1. Verdict
