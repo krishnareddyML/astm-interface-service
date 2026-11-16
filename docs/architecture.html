@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ASTM Interface Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<!--
+  SINGLE SOURCE OF TRUTH for how this repository works.
+  Rule (see CLAUDE.md): any change to a flow, record type, queue, table, status, port, driver,
+  startup step or deployment step updates this file in the same commit.
+  astm-server/src/test/java/com/lis/astm/server/ArchitectureDocTest.java fails the build when
+  configured instruments, drivers, ports, queues, routing keys or statuses are missing here.
+-->
+<style>
+/* Layout: technical handbook. Sticky contents rail on wide screens, one reading column, diagrams scroll sideways inside their own frame. */
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --ink: #16202a;
+  --muted: #586472;
+  --line: #d9dee5;
+  --line-strong: #aeb7c2;
+  --accent: #1d56b8;
+  --accent-soft: #e6eefb;
+  --ortho: #8b3a8f;
+  --ortho-soft: #f6e9f6;
+  --sysmex: #0b7480;
+  --sysmex-soft: #e2f3f4;
+  --ok: #1b7a4d;
+  --ok-soft: #e1f2e8;
+  --warn: #9a5c00;
+  --warn-soft: #fbf0db;
+  --bad: #b0281f;
+  --bad-soft: #f9e4e2;
+  --code-bg: #edf0f4;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", "Segoe UI", sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", Consolas, "Cascadia Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141a; --surface: #171e26; --ink: #e5eaf0; --muted: #9ba7b4; --line: #2a3440; --line-strong: #46525f;
+    --accent: #7ea8f0; --accent-soft: #1a2944; --ortho: #d79bdb; --ortho-soft: #2e1d30; --sysmex: #5cc6cf; --sysmex-soft: #12302f;
+    --ok: #63c592; --ok-soft: #143222; --warn: #e7ad55; --warn-soft: #382a12; --bad: #f08c82; --bad-soft: #3b1c19; --code-bg: #1d252f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141a; --surface: #171e26; --ink: #e5eaf0; --muted: #9ba7b4; --line: #2a3440; --line-strong: #46525f;
+  --accent: #7ea8f0; --accent-soft: #1a2944; --ortho: #d79bdb; --ortho-soft: #2e1d30; --sysmex: #5cc6cf; --sysmex-soft: #12302f;
+  --ok: #63c592; --ok-soft: #143222; --warn: #e7ad55; --warn-soft: #382a12; --bad: #f08c82; --bad-soft: #3b1c19; --code-bg: #1d252f;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.6 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.shell { max-width: 1240px; margin: 0 auto; display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 48px; padding-block: 40px 80px; }
+@media (max-width: 1050px) { .shell { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-block: 24px 64px; } }
+
+/* contents rail */
+.toc { position: sticky; top: 24px; align-self: start; max-height: calc(100vh - 48px); overflow-y: auto; font-size: 13.5px; }
+.toc h2 { font: 600 11px/1 var(--font-body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: s; }
+.toc li { counter-increment: s; }
+.toc a { display: grid; grid-template-columns: 26px 1fr; padding: 4px 8px; border-radius: 6px; color: var(--ink); text-decoration: none; }
+.toc a::before { content: counter(s, decimal-leading-zero); color: var(--muted); font: 12px/1.7 var(--font-mono); }
+.toc a:hover, .toc a:focus-visible { background: var(--accent-soft); outline: none; }
+@media (max-width: 1050px) {
+  .toc { position: static; max-height: none; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .toc ol { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+}
+
+main { min-width: 0; }
+header.top { display: grid; gap: 14px; padding-bottom: 28px; border-bottom: 2px solid var(--ink); margin-bottom: 8px; }
+.eyebrow { font: 600 12px/1 var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 600 clamp(32px, 5vw, 50px)/1.05 var(--font-display); margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+.lede { font-size: 17px; max-width: 68ch; margin: 0; color: var(--ink); }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font: 12.5px/1.5 var(--font-mono); color: var(--muted); }
+
+section { padding-top: 44px; scroll-margin-top: 16px; }
+h2 { font: 600 27px/1.15 var(--font-display); margin: 0 0 6px; text-wrap: balance; display: flex; gap: 12px; align-items: baseline; }
+h2 .n { font: 500 14px/1 var(--font-mono); color: var(--accent); }
+h3 { font: 600 17px/1.3 var(--font-body); margin: 26px 0 8px; text-wrap: balance; }
+p, ul, ol { max-width: 72ch; }
+p { margin: 10px 0; }
+ul, ol { padding-left: 22px; margin: 10px 0; }
+li { margin: 4px 0; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sub { color: var(--muted); margin: 0 0 14px; max-width: 72ch; }
+code, .mono { font-family: var(--font-mono); font-size: .88em; }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+pre { background: var(--code-bg); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font: 12.5px/1.55 var(--font-mono); margin: 12px 0; }
+pre code { background: none; padding: 0; overflow-wrap: normal; }
+
+.table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { font: 600 11.5px/1.3 var(--font-body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--bg); white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+td code { white-space: nowrap; }
+td.wrap code { white-space: normal; }
+.num { font-variant-numeric: tabular-nums; }
+
+.figure { margin: 18px 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.figure .canvas { overflow-x: auto; padding: 14px; }
+.figure figcaption { padding: 10px 16px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.dg { display: block; width: 100%; height: auto; min-width: 760px; }
+.dg text { fill: var(--ink); font: 13px var(--font-body); }
+.dg .b { font-weight: 600; }
+.dg .m { fill: var(--muted); font-size: 11.5px; }
+.dg .mono { font-family: var(--font-mono); font-size: 11px; }
+.dg .box { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.2; }
+.dg .box.acc { fill: var(--accent-soft); stroke: var(--accent); }
+.dg .box.ortho { fill: var(--ortho-soft); stroke: var(--ortho); }
+.dg .box.sysmex { fill: var(--sysmex-soft); stroke: var(--sysmex); }
+.dg .box.ok { fill: var(--ok-soft); stroke: var(--ok); }
+.dg .box.bad { fill: var(--bad-soft); stroke: var(--bad); }
+.dg .box.dash { stroke-dasharray: 5 4; }
+.dg .inner { fill: var(--surface); stroke: var(--line); stroke-width: 1; }
+.dg .note { fill: var(--warn-soft); stroke: var(--warn); stroke-width: 1; }
+.dg .ln { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+.dg .ln.acc { stroke: var(--accent); }
+.dg .ln.dash { stroke-dasharray: 5 4; }
+.dg .life { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 4; }
+.dg .ah { fill: var(--muted); }
+.dg .ah.acc { fill: var(--accent); }
+
+.callout { border: 1px solid var(--line); border-left: 4px solid var(--accent); background: var(--surface); border-radius: 8px; padding: 12px 16px; margin: 16px 0; max-width: 80ch; }
+.callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+.callout.ok { border-left-color: var(--ok); background: var(--ok-soft); }
+.callout p { margin: 4px 0; }
+.callout strong:first-child { display: block; margin-bottom: 2px; }
+
+.tag { display: inline-block; font: 600 11px/1.6 var(--font-body); letter-spacing: .04em; padding: 0 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.tag.ortho { color: var(--ortho); } .tag.sysmex { color: var(--sysmex); } .tag.ok { color: var(--ok); } .tag.warn { color: var(--warn); } .tag.bad { color: var(--bad); } .tag.acc { color: var(--accent); }
+
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 14px 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.card h4 { margin: 0 0 6px; font: 600 15px/1.3 var(--font-body); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.card p, .card ul { margin: 6px 0; font-size: 14px; }
+.card.ortho { border-top: 3px solid var(--ortho); } .card.sysmex { border-top: 3px solid var(--sysmex); }
+
+.steps { list-style: none; padding: 0; counter-reset: st; display: grid; gap: 10px; max-width: 80ch; }
+.steps > li { counter-increment: st; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; margin: 0; }
+.steps > li::before { content: counter(st); font: 600 13px/30px var(--font-mono); text-align: center; width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
+.steps > li > div { padding-top: 4px; min-width: 0; }
+
+.wire { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0; }
+.wire span { font: 500 12.5px/1 var(--font-mono); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface); }
+.wire .ctl { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.wire .data { background: var(--code-bg); }
+.wire .gap { border: none; background: none; color: var(--muted); padding: 0 2px; }
+
+.flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; font-size: 13px; }
+.flow .st { font: 600 12px/1 var(--font-mono); padding: 7px 10px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface); }
+.flow .st.ok { color: var(--ok); border-color: var(--ok); background: var(--ok-soft); }
+.flow .st.warn { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+.flow .st.bad { color: var(--bad); border-color: var(--bad); background: var(--bad-soft); }
+.flow .arr { color: var(--muted); }
+
+.verdict { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 16px 0; }
+.verdict .card { border-left: 4px solid var(--accent); }
+footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<nav class="toc" aria-label="Contents">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#overview">At a glance</a></li>
+    <li><a href="#context">System context</a></li>
+    <li><a href="#modules">Repository modules</a></li>
+    <li><a href="#startup">How the service starts</a></li>
+    <li><a href="#many">Many analyzers, one service</a></li>
+    <li><a href="#wire">The wire: E1381 framing</a></li>
+    <li><a href="#records">Record types per analyzer</a></li>
+    <li><a href="#flow-results">Flow: results in</a></li>
+    <li><a href="#flow-orders">Flow: query and order</a></li>
+    <li><a href="#states">Statuses and retries</a></li>
+    <li><a href="#rabbitmq">RabbitMQ topology</a></li>
+    <li><a href="#database">Database tables</a></li>
+    <li><a href="#json">JSON contract</a></li>
+    <li><a href="#config">Configuration and deployment</a></li>
+    <li><a href="#testing">Testing</a></li>
+    <li><a href="#boundary">RabbitMQ-only boundary?</a></li>
+    <li><a href="#risks">Open items and risks</a></li>
+    <li><a href="#upkeep">Keeping this page true</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="top">
+  <span class="eyebrow">Infinity LIS · instrument interfaces</span>
+  <h1>ASTM Interface Architecture</h1>
+  <p class="lede">How laboratory analyzers talk to the Infinity LIS through this service: the modules, how the service starts and listens, how results, queries and orders move between the analyzers, RabbitMQ, the core LIS and SQL Server, and what is still open. Covers ORTHO VISION (blood bank) and Sysmex XN (hematology).</p>
+  <div class="meta">
+    <span>Standards: ASTM E1381-02 (link) · E1394-97 (records)</span>
+    <span>Java 8 target · Spring Boot 2.7.18</span>
+    <span>Updated 2026-11-16 · branch claude/adoring-shannon-jmlq1n (PR #1)</span>
+  </div>
+</header>
+
+<!-- 1 -->
+<section id="overview">
+  <h2><span class="n">01</span>At a glance</h2>
+  <p>The service is a TCP server. Each analyzer connects to its own port and speaks ASTM. The service checks every frame, turns each complete message into JSON, keeps an audit copy in SQL Server and publishes the JSON to RabbitMQ for the core LIS. Orders travel the other way: the core LIS publishes JSON, the service stores it, converts it to ASTM and sends it when the analyzer is connected.</p>
+  <div class="grid2">
+    <div class="card ortho">
+      <h4>ORTHO VISION <span class="tag ortho">blood bank</span></h4>
+      <ul>
+        <li>Instrument name <code>OrthoVision</code>, port <code>9001</code></li>
+        <li>Driver <code>OrthoVisionDriver</code></li>
+        <li>Records H P Q O R M L; <code>M</code> carries card and well results</li>
+        <li>Sends queries, results and keep-alives; receives orders</li>
+        <li>Spec notes: <code>astm_message_specs.md</code></li>
+        <li>Status: worked against the real analyzer in 2025</li>
+      </ul>
+    </div>
+    <div class="card sysmex">
+      <h4>Sysmex XN <span class="tag sysmex">hematology</span></h4>
+      <ul>
+        <li>Instrument name <code>SysmexXN</code>, port <code>5000</code></li>
+        <li>Driver <code>SysmexXnDriver</code> + <code>SysmexXnSpecimenId</code></li>
+        <li>Records H P Q O R C S L; <code>C</code> comments are parsed</li>
+        <li>Sends inquiries, patient, QC and slide results; receives order responses</li>
+        <li>Spec: Sysmex XN ASTM Host Interface (NA rev 11)</li>
+        <li>Status: spec examples pass as tests; simulator test next, then the real IPU</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section id="context">
+  <h2><span class="n">02</span>System context</h2>
+  <p class="sub">Who talks to whom, and over what. The analyzer always opens the TCP connection; the service never dials out to an analyzer.</p>
+  <figure class="figure">
+    <div class="canvas">
+      <svg class="dg" viewBox="0 0 990 470" role="img" aria-label="System context: analyzers connect over TCP to astm-server, which uses SQL Server over JDBC and RabbitMQ over AMQP; the core LIS and Mirth also use RabbitMQ.">
+        <defs>
+          <marker id="c-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0L10,5L0,10z"/></marker>
+          <marker id="c-aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah acc" d="M0,0L10,5L0,10z"/></marker>
+        </defs>
+        <rect class="box ortho" x="20" y="60" width="210" height="84" rx="8"/>
+        <text x="36" y="88" class="b">ORTHO VISION</text>
+        <text x="36" y="108" class="m">Blood bank analyzer</text>
+        <text x="36" y="128" class="m">connects to port 9001</text>
+        <rect class="box sysmex" x="20" y="290" width="210" height="84" rx="8"/>
+        <text x="36" y="318" class="b">Sysmex XN (IPU)</text>
+        <text x="36" y="338" class="m">Hematology analyzer</text>
+        <text x="36" y="358" class="m">connects to port 5000</text>
+
+        <rect class="box acc" x="290" y="20" width="330" height="336" rx="10"/>
+        <text x="306" y="46" class="b">astm-server · one Java process</text>
+        <rect class="inner" x="306" y="60" width="298" height="40" rx="6"/><text x="320" y="85">Listener :9001 → OrthoVision session</text>
+        <rect class="inner" x="306" y="108" width="298" height="40" rx="6"/><text x="320" y="133">Listener :5000 → SysmexXN session</text>
+        <rect class="inner" x="306" y="156" width="298" height="40" rx="6"/><text x="320" y="181">E1381 link: frames, checksum, ACK/NAK</text>
+        <rect class="inner" x="306" y="204" width="298" height="40" rx="6"/><text x="320" y="229">Drivers: OrthoVisionDriver · SysmexXnDriver</text>
+        <rect class="inner" x="306" y="252" width="298" height="40" rx="6"/><text x="320" y="277">ResultQueuePublisher · OrderQueueListener</text>
+        <rect class="inner" x="306" y="300" width="298" height="40" rx="6"/><text x="320" y="325">Retry jobs: orders 60 s · results 2 min</text>
+
+        <rect class="box" x="306" y="400" width="298" height="56" rx="8"/>
+        <text x="320" y="424" class="b">SQL Server</text>
+        <text x="320" y="444" class="m mono">ASTMServerMessages · ASTMOrderMessages</text>
+
+        <rect class="box" x="740" y="20" width="235" height="84" rx="8"/>
+        <text x="756" y="46" class="b">Core LIS service</text>
+        <text x="756" y="66" class="m">reads results, QC, queries</text>
+        <text x="756" y="86" class="m">publishes orders · owns LIS DB</text>
+        <rect class="box" x="740" y="170" width="235" height="170" rx="8"/>
+        <text x="756" y="196" class="b">RabbitMQ</text>
+        <text x="756" y="216" class="m">vhost infinity-lis-&lt;env&gt;</text>
+        <text x="756" y="246" class="mono">lis.inbound.x → results, QC</text>
+        <text x="756" y="268" class="mono">lis.outbound.x → ASTM orders</text>
+        <text x="756" y="296" class="m">every queue: quorum, with .dlq</text>
+        <text x="756" y="318" class="m">user astm-server (least privilege)</text>
+        <rect class="box dash" x="740" y="380" width="235" height="64" rx="8"/>
+        <text x="756" y="406" class="b">Mirth Connect</text>
+        <text x="756" y="426" class="m">HL7 analyzers + EHR · same exchanges</text>
+
+        <line class="ln" x1="230" y1="102" x2="306" y2="80" marker-start="url(#c-a)" marker-end="url(#c-a)"/>
+        <text x="240" y="76" class="m">TCP</text>
+        <line class="ln" x1="230" y1="332" x2="306" y2="128" marker-start="url(#c-a)" marker-end="url(#c-a)"/>
+        <text x="244" y="244" class="m">TCP</text>
+        <line class="ln acc" x1="604" y1="262" x2="740" y2="262" marker-end="url(#c-aa)"/>
+        <text x="640" y="255" class="m">publish</text>
+        <line class="ln acc" x1="740" y1="284" x2="604" y2="284" marker-end="url(#c-aa)"/>
+        <text x="646" y="301" class="m">orders</text>
+        <line class="ln" x1="857" y1="104" x2="857" y2="170" marker-start="url(#c-a)" marker-end="url(#c-a)"/>
+        <text x="865" y="142" class="m">AMQP</text>
+        <line class="ln dash" x1="857" y1="380" x2="857" y2="340" marker-end="url(#c-a)"/>
+        <line class="ln" x1="455" y1="356" x2="455" y2="400" marker-start="url(#c-a)" marker-end="url(#c-a)"/>
+        <text x="463" y="383" class="m">JDBC</text>
+      </svg>
+    </div>
+    <figcaption>Analyzers speak ASTM over TCP. Everything after the service is JSON over RabbitMQ (AMQP). SQL Server is used only by this service, for its own audit and order tables.</figcaption>
+  </figure>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Component</th><th>Owns</th><th>Talks to this service through</th></tr></thead>
+    <tbody>
+      <tr><td>Analyzers</td><td>Measurements, the ASTM conversation</td><td>TCP socket (analyzer is the client)</td></tr>
+      <tr><td>astm-server</td><td>ASTM framing, record parsing and building, delivery retries</td><td>—</td></tr>
+      <tr><td>RabbitMQ</td><td>Exchanges and queues (provisioned by <code>infinity-lis-rabbitmq-topology.ps1</code>)</td><td>AMQP 5672 as user <code>astm-server</code></td></tr>
+      <tr><td>Core LIS</td><td>Patients, orders, results, QC decisions</td><td>RabbitMQ only (no API calls, no shared tables)</td></tr>
+      <tr><td>SQL Server</td><td>Two service tables (section 12)</td><td>JDBC 1433, pool of 5 (local) connections</td></tr>
+      <tr><td>Mirth Connect</td><td>HL7 analyzers and EHR feeds</td><td>Nothing direct; shares <code>lis.inbound.x</code> and the results queue</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 3 -->
+<section id="modules">
+  <h2><span class="n">03</span>Repository modules</h2>
+  <p class="sub">Maven multi-module build. Only <code>astm-server</code> is deployed; the other three are a shared library and two tools.</p>
+  <figure class="figure">
+    <div class="canvas">
+      <svg class="dg" viewBox="0 0 990 250" role="img" aria-label="astm-server, instrument-simulator and astm-parser-swing all depend on astm-model.">
+        <defs><marker id="m-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0L10,5L0,10z"/></marker></defs>
+        <rect class="box acc" x="20" y="20" width="300" height="86" rx="8"/>
+        <text x="36" y="46" class="b">astm-server</text>
+        <text x="36" y="66" class="m">the deployable Windows service</text>
+        <text x="36" y="86" class="m">listeners, protocol, drivers, DB, RabbitMQ</text>
+        <rect class="box" x="345" y="20" width="300" height="86" rx="8"/>
+        <text x="361" y="46" class="b">instrument-simulator</text>
+        <text x="361" y="66" class="m">CLI that plays an analyzer</text>
+        <text x="361" y="86" class="m">JSON test cases, real ASTM over TCP</text>
+        <rect class="box" x="670" y="20" width="300" height="86" rx="8"/>
+        <text x="686" y="46" class="b">astm-parser-swing</text>
+        <text x="686" y="66" class="m">desktop GUI</text>
+        <text x="686" y="86" class="m">paste raw ASTM, inspect the records</text>
+        <rect class="box" x="345" y="170" width="300" height="64" rx="8"/>
+        <text x="361" y="196" class="b">astm-model</text>
+        <text x="361" y="216" class="m">H P Q O R C M L records · JSON · no Spring</text>
+        <line class="ln" x1="170" y1="106" x2="410" y2="170" marker-end="url(#m-a)"/>
+        <line class="ln" x1="495" y1="106" x2="495" y2="170" marker-end="url(#m-a)"/>
+        <line class="ln" x1="820" y1="106" x2="580" y2="170" marker-end="url(#m-a)"/>
+        <text x="503" y="144" class="m">depends on</text>
+      </svg>
+    </div>
+    <figcaption>astm-model is the contract: the JSON the LIS receives is the serialized <code>AstmMessage</code>. Keep it backward compatible (add optional fields, never rename JSON properties).</figcaption>
+  </figure>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Package in astm-server</th><th>Classes</th><th>Job</th></tr></thead>
+    <tbody>
+      <tr><td><code>core</code></td><td><code>ASTMServer</code>, <code>InstrumentConnectionHandler</code></td><td>Listener per instrument; one session (event loop) per connected analyzer</td></tr>
+      <tr><td><code>protocol</code></td><td><code>ASTMProtocolStateMachine</code>, <code>ChecksumUtils</code></td><td>E1381 link layer: ENQ/ACK/NAK/EOT, frames, checksum, timers</td></tr>
+      <tr><td><code>driver</code></td><td><code>InstrumentDriver</code>, <code>OrthoVisionDriver</code>, <code>SysmexXnDriver</code>, <code>SysmexXnSpecimenId</code></td><td><code>parse(raw)</code> → <code>AstmMessage</code>; <code>build(AstmMessage)</code> → raw ASTM. All analyzer quirks live here.</td></tr>
+      <tr><td><code>messaging</code></td><td><code>ResultQueuePublisher</code>, <code>OrderQueueListener</code>, <code>ResultQueueTestListener</code> (debug, off)</td><td>Publish results with broker confirms; consume orders</td></tr>
+      <tr><td><code>service</code></td><td><code>ServerMessageService</code>, <code>ServerMessageRetryService</code>, <code>OrderMessageService</code></td><td>Status changes, both retry jobs, order outcome handling</td></tr>
+      <tr><td><code>repository</code> / <code>model</code></td><td><code>ServerMessageRepository</code>, <code>OrderMessageRepository</code>, <code>ServerMessage</code>, <code>OrderMessage</code></td><td>Plain JDBC (JdbcTemplate) on the two tables</td></tr>
+      <tr><td><code>config</code></td><td><code>AppConfig</code>, <code>InstrumentQueueConfig</code>, <code>BeansConfig</code>, <code>OrderMessageConfig</code></td><td><code>lis.*</code> properties, order listener containers, Jackson setup</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 4 -->
+<section id="startup">
+  <h2><span class="n">04</span>How the service starts and opens ports</h2>
+  <ol class="steps">
+    <li><div><strong>Windows service starts the JAR.</strong> NSSM (see README) runs <code>java -jar astm-server-1.0.0.jar --spring.profiles.active=prod</code>. Spring Boot loads <code>application.properties</code> and <code>application-&lt;profile&gt;.yml</code>; secrets come from environment variables (<code>DB_PASSWORD</code>, <code>RABBITMQ_PASSWORD</code>, ...).</div></li>
+    <li><div><strong>Connections are prepared.</strong> Hikari pool to SQL Server; RabbitMQ connection factory with publisher confirms (<code>correlated</code>), publisher returns and <code>mandatory=true</code>, on vhost <code>infinity-lis-&lt;env&gt;</code>.</div></li>
+    <li><div><strong>Order listeners start</strong> (<code>InstrumentQueueConfig</code>, only when <code>lis.messaging.enabled=true</code>). With <code>declare-topology: false</code> nothing is created on the broker. One listener container starts per distinct order queue, so both analyzers share one consumer on <code>lis.orders.instrument.astm.outbound.q</code>.</div></li>
+    <li><div><strong>One listener thread per instrument</strong> (<code>ASTMServer</code>, <code>@PostConstruct</code>). For each enabled instrument with a <code>driverClassName</code>, thread <code>ASTM-Listener-&lt;name&gt;</code> opens <code>ServerSocket(port)</code> on all network interfaces and loops on <code>accept()</code> with a 2 s timeout. Log line: <code>Listener started for 'SysmexXN' on port 5000 using driver ...</code></div></li>
+    <li><div><strong>Scheduled jobs start.</strong> Order retry every <code>lis.messaging.retry.schedule-interval-ms</code> (60 s); result republish every 2 min.</div></li>
+    <li><div><strong>An analyzer connects.</strong> Any older session for that instrument is stopped and replaced. The socket gets TCP keep-alive, no-delay and a 500 ms read timeout. A new driver instance is created and the session runs on a pooled <code>ASTM-Conn-*</code> thread.</div></li>
+    <li><div><strong>Session loop</strong> (<code>InstrumentConnectionHandler</code>): send at most one queued order, then poll the socket for 500 ms; repeat. Incoming ENQ always wins over sending.</div></li>
+    <li><div><strong>Shutdown</strong> (<code>@PreDestroy</code>): listeners close, sessions stop, orders still queued in memory go back to <code>PENDING</code> in the database, threads get 5 s to finish.</div></li>
+  </ol>
+</section>
+
+<!-- 5 -->
+<section id="many">
+  <h2><span class="n">05</span>Many analyzers in one deployment</h2>
+  <p>Running ORTHO VISION, Sysmex XN and future ASTM analyzers in one service is fine and is the intended design. Each analyzer costs two threads (listener and session) and one socket.</p>
+  <div class="grid2">
+    <div class="card"><h4><span class="tag ok">isolated</span> per analyzer</h4>
+      <ul><li>Port and listener thread</li><li>Session thread, socket, driver instance, in-memory order queue</li><li>Protocol state and timers</li><li>A parse error or bad frame affects only that analyzer</li></ul></div>
+    <div class="card"><h4><span class="tag warn">shared</span> by all analyzers</h4>
+      <ul><li>The Java process: a restart drops every session (analyzers reconnect and resend unacknowledged messages)</li><li>SQL Server pool (5 connections local) and the RabbitMQ connection</li><li>The two retry jobs</li><li>The single ASTM order queue (orders are routed by <code>instrumentName</code>)</li></ul></div>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Situation</th><th>What happens</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr><td>Two instruments configured on the same port, or the port is taken by another program</td><td>That listener logs <code>Listener for '...' failed and has stopped</code>; the others keep running</td><td>Give every instrument its own port; check the startup log for every <code>Listener started</code> line</td></tr>
+      <tr><td>Any device on the network connects to port 5000</td><td>It is treated as the Sysmex and replaces the real session (no source-address check in code)</td><td>Restrict the firewall rule to the analyzer's IP: <code>New-NetFirewallRule ... -LocalPort 5000 -RemoteAddress &lt;IPU IP&gt;</code></td></tr>
+      <tr><td>Two analyzers of the same model</td><td>Need two entries with different <code>name</code> and <code>port</code>, same <code>driverClassName</code></td><td>The LIS must put the matching <code>instrumentName</code> in each order</td></tr>
+      <tr><td>Broker slow while publishing</td><td>That analyzer's session waits up to 10 s for the confirm; other sessions are unaffected</td><td>Failures go to <code>PUBLISH_RETRY</code> automatically</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 6 -->
+<section id="wire">
+  <h2><span class="n">06</span>The wire: E1381 framing</h2>
+  <p class="sub">The link layer is the same for every analyzer (<code>ASTMProtocolStateMachine</code>). Wire charset is ISO-8859-1, so accented names survive and the checksum is computed on bytes.</p>
+  <div class="wire" aria-label="One ASTM transfer">
+    <span class="ctl">ENQ</span><span class="gap">→ ACK ←</span>
+    <span class="ctl">STX</span><span class="data">1</span><span class="data">H|\^&amp;|||...</span><span class="ctl">ETX</span><span class="data">C1 C2</span><span class="ctl">CR LF</span><span class="gap">→ ACK ←</span>
+    <span class="ctl">STX</span><span class="data">2</span><span class="data">P|1|...</span><span class="ctl">ETX</span><span class="data">C1 C2</span><span class="ctl">CR LF</span><span class="gap">… frames 3, 4 … 7, 0, 1 …</span>
+    <span class="ctl">EOT</span>
+  </div>
+  <ul>
+    <li><strong>Frame number</strong> 1..7, then 0, 1, ...; <strong>checksum</strong> = 8-bit sum of the bytes after STX up to and including ETX/ETB, two uppercase hex digits.</li>
+    <li><strong>One record per frame.</strong> The Sysmex spec forbids splitting a record across frames on TCP, so outgoing records are sent whole. Records can be split into ETB frames with <code>sendMessage(msg, maxFrameDataSize)</code> if a future analyzer needs the 240-character limit. Incoming ETB frames are joined.</li>
+    <li>The receiver rebuilds the message with one record per line (CR LF); drivers split on CR.</li>
+    <li>A bad checksum gets NAK and the sender repeats the frame (up to 6 times). A repeated frame the receiver already ACKed is ACKed again and dropped.</li>
+  </ul>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Timer / rule</th><th>Value</th><th>Meaning</th></tr></thead>
+    <tbody class="num">
+      <tr><td>Sender waits for ACK</td><td>15 s</td><td>No reply: frame failed, transfer ends with EOT</td></tr>
+      <tr><td>Receiver waits for next frame</td><td>30 s</td><td>Silence: transfer abandoned, message discarded</td></tr>
+      <tr><td>ENQ contention back-off</td><td>20 s</td><td>Both sides sent ENQ: the service yields, receives first, retries its order later</td></tr>
+      <tr><td>Frame retries</td><td>6</td><td>After 6 NAKs the transfer is aborted</td></tr>
+      <tr><td>Socket poll</td><td>500 ms</td><td>Session loop granularity</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 7 -->
+<section id="records">
+  <h2><span class="n">07</span>Record types per analyzer</h2>
+  <p class="sub">E1394 records inside a message. "In" means analyzer to service, "out" means service to analyzer.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Record</th><th>Name</th><th><span class="tag ortho">ORTHO VISION</span></th><th><span class="tag sysmex">Sysmex XN</span></th></tr></thead>
+    <tbody>
+      <tr><td><code>H</code></td><td>Header</td><td>In and out; <code>H|\^&amp;</code> delimiters</td><td>In and out; out is exactly <code>H|\^&amp;|||||||||||E1394-97</code></td></tr>
+      <tr><td><code>P</code></td><td>Patient</td><td>In and out</td><td>In and out; ward from field 25 or 24 (bench check pending)</td></tr>
+      <tr><td><code>Q</code></td><td>Request (query)</td><td>In: query for a sample</td><td>In: inquiry with sample key <code>rack^pos^sampleId^attr</code></td></tr>
+      <tr><td><code>O</code></td><td>Order</td><td>Out: orders; in: echoed with results</td><td>Out: order response, sample ID right-aligned to 22 chars, report type Q/Y/X/Z; in: sample key in field 9.4.4</td></tr>
+      <tr><td><code>R</code></td><td>Result</td><td>In</td><td>In: <code>^^^^WBC^1</code> style; classified as clinical, IP suspect, IP abnormal, action message, image, QC, slide</td></tr>
+      <tr><td><code>C</code></td><td>Comment</td><td><span class="tag">not in spec</span> Not sent by the analyzer. If one arrives the driver logs <code>Ignoring unsupported record type: C</code> and goes on.</td><td><span class="tag ok">covered</span> In and out. See below.</td></tr>
+      <tr><td><code>M</code></td><td>Manufacturer result</td><td>In: card, reagent and well details</td><td>Not used</td></tr>
+      <tr><td><code>S</code></td><td>Scientific</td><td>Not used</td><td>In: reagent information; logged and skipped</td></tr>
+      <tr><td><code>L</code></td><td>Terminator</td><td>In and out</td><td>In and out; <code>L|1|N</code></td></tr>
+    </tbody>
+  </table></div>
+  <h3>Sysmex comment records (C), in detail</h3>
+  <p>A <code>C</code> record belongs to the record before it. <code>SysmexXnDriver</code> tracks that and stores the scope with each comment in <code>commentRecords</code>.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Follows</th><th>Scope in JSON</th><th>Example</th><th>Handling</th></tr></thead>
+    <tbody>
+      <tr><td><code>P</code></td><td><code>PATIENT</code></td><td><code>C|1||Patient Comments</code></td><td>Parsed in; written after P in order responses</td></tr>
+      <tr><td><code>O</code></td><td><code>ORDER</code></td><td><code>C|1||Sample Comments</code></td><td>Parsed in; written after O in order responses</td></tr>
+      <tr><td><code>R</code></td><td><code>RESULT</code></td><td class="wrap"><code>C|1||1^WBC HIGH\23^Need to PLT-F analysis</code></td><td>Rerun/reflex rules split into <code>ruleReferences</code>: rule 1 <em>WBC HIGH</em>, rule 23 <em>Need to PLT-F analysis</em></td></tr>
+      <tr><td><code>H</code></td><td><code>MESSAGE</code></td><td>(rare)</td><td>Parsed in</td></tr>
+    </tbody>
+  </table></div>
+  <p>Escapes inside text (<code>&amp;F&amp;</code>, <code>&amp;S&amp;</code>, <code>&amp;R&amp;</code>, <code>&amp;E&amp;</code>) are decoded on input and encoded on output (<code>AstmEscape</code>).</p>
+  <h3>Message types published</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th><code>messageType</code></th><th>When</th><th>Published?</th></tr></thead>
+    <tbody>
+      <tr><td><code>RESULT</code></td><td>Message has results (patient)</td><td>Yes, results lane</td></tr>
+      <tr><td><code>QC_RESULT</code></td><td>Sysmex QC sample (specimen ID <code>QC-...</code> or action code Q)</td><td>Yes, QC lane</td></tr>
+      <tr><td><code>QUERY</code></td><td>Message has Q records</td><td>Yes, query key on the results lane</td></tr>
+      <tr><td><code>KEEP_ALIVE</code></td><td>ORTHO header-plus-terminator heartbeat</td><td>No, not stored</td></tr>
+      <tr><td><code>ORDER</code>, <code>UNKNOWN</code></td><td>No results and no queries</td><td>No, stored only</td></tr>
+      <tr><td><code>RETRY_</code> + type</td><td>Republished after a failure</td><td>Yes, same lane as the original type</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 8 -->
+<section id="flow-results">
+  <h2><span class="n">08</span>Flow: results from the analyzer</h2>
+  <figure class="figure">
+    <div class="canvas">
+      <svg class="dg" viewBox="0 0 990 595" role="img" aria-label="Sequence: analyzer sends frames, link layer ACKs, handler stores, parses, publishes with confirm, marks published; LIS receives.">
+        <defs><marker id="s1-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0L10,5L0,10z"/></marker>
+        <marker id="s1-aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah acc" d="M0,0L10,5L0,10z"/></marker></defs>
+        <rect class="box sysmex" x="0" y="8" width="140" height="40" rx="6"/><text x="70" y="33" text-anchor="middle" class="b">Analyzer</text>
+        <rect class="box acc" x="220" y="8" width="140" height="40" rx="6"/><text x="290" y="33" text-anchor="middle" class="b">E1381 link layer</text>
+        <rect class="box acc" x="380" y="8" width="140" height="40" rx="6"/><text x="450" y="33" text-anchor="middle" class="b">Session + driver</text>
+        <rect class="box" x="540" y="8" width="140" height="40" rx="6"/><text x="610" y="33" text-anchor="middle" class="b">SQL Server</text>
+        <rect class="box" x="700" y="8" width="140" height="40" rx="6"/><text x="770" y="33" text-anchor="middle" class="b">RabbitMQ</text>
+        <rect class="box" x="845" y="8" width="140" height="40" rx="6"/><text x="915" y="33" text-anchor="middle" class="b">Core LIS</text>
+        <line class="life" x1="70" y1="48" x2="70" y2="540"/><line class="life" x1="290" y1="48" x2="290" y2="540"/>
+        <line class="life" x1="450" y1="48" x2="450" y2="540"/><line class="life" x1="610" y1="48" x2="610" y2="540"/>
+        <line class="life" x1="770" y1="48" x2="770" y2="540"/><line class="life" x1="915" y1="48" x2="915" y2="540"/>
+
+        <line class="ln" x1="70" y1="86" x2="290" y2="86" marker-end="url(#s1-a)"/><text x="180" y="80" text-anchor="middle" class="m">ENQ</text>
+        <line class="ln" x1="290" y1="116" x2="70" y2="116" marker-end="url(#s1-a)"/><text x="180" y="110" text-anchor="middle" class="m">ACK</text>
+        <line class="ln" x1="70" y1="146" x2="290" y2="146" marker-end="url(#s1-a)"/><text x="180" y="140" text-anchor="middle" class="m">STX 1 H-record ETX C1 C2 CR LF</text>
+        <line class="ln" x1="290" y1="176" x2="70" y2="176" marker-end="url(#s1-a)"/><text x="180" y="170" text-anchor="middle" class="m">ACK (checksum ok) or NAK</text>
+        <line class="ln" x1="70" y1="206" x2="290" y2="206" marker-end="url(#s1-a)"/><text x="180" y="200" text-anchor="middle" class="m">frames 2..n: P, O, R, C records</text>
+        <line class="ln" x1="70" y1="236" x2="290" y2="236" marker-end="url(#s1-a)"/><text x="180" y="230" text-anchor="middle" class="m">EOT</text>
+        <line class="ln acc" x1="290" y1="272" x2="450" y2="272" marker-end="url(#s1-aa)"/><text x="370" y="266" text-anchor="middle" class="m">message (CR LF records)</text>
+        <line class="ln" x1="450" y1="308" x2="610" y2="308" marker-end="url(#s1-a)"/><text x="530" y="302" text-anchor="middle" class="m">INSERT · RECEIVED</text>
+        <rect class="note" x="355" y="331" width="190" height="26" rx="5"/><text x="450" y="348" text-anchor="middle" class="m">driver.parse() → AstmMessage</text>
+        <line class="ln" x1="450" y1="380" x2="610" y2="380" marker-end="url(#s1-a)"/><text x="530" y="374" text-anchor="middle" class="m">UPDATE · PROCESSED</text>
+        <line class="ln acc" x1="450" y1="416" x2="770" y2="416" marker-end="url(#s1-aa)"/><text x="610" y="410" text-anchor="middle" class="m">publish lis.inbound.x · key by messageType</text>
+        <line class="ln" x1="770" y1="452" x2="450" y2="452" marker-end="url(#s1-a)"/><text x="610" y="446" text-anchor="middle" class="m">confirm: ack and routed (wait ≤ 10 s)</text>
+        <line class="ln" x1="450" y1="488" x2="610" y2="488" marker-end="url(#s1-a)"/><text x="530" y="482" text-anchor="middle" class="m">UPDATE · PUBLISHED</text>
+        <line class="ln acc" x1="770" y1="524" x2="915" y2="524" marker-end="url(#s1-aa)"/><text x="842" y="518" text-anchor="middle" class="m">results / QC queue</text>
+        <rect class="note" x="200" y="552" width="760" height="30" rx="5"/>
+        <text x="580" y="572" text-anchor="middle" class="m">Broker down, refused or unroutable: status PUBLISH_RETRY; every 2 min the retry job re-parses RawMessage and publishes again.</text>
+      </svg>
+    </div>
+    <figcaption>The analyzer sees only the ACKs. The database row is written before parsing, so the raw message is kept even if parsing or publishing fails.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><div>Link layer validates every frame and ACKs it; the analyzer moves on frame by frame.</div></li>
+    <li><div>On EOT the session gets the whole message, types it (<code>RESULT</code>, <code>QUERY</code>, <code>KEEP_ALIVE</code>, ...) and skips keep-alives.</div></li>
+    <li><div>Row inserted in <code>ASTMServerMessages</code> with the raw text and remote address (<code>RECEIVED</code>).</div></li>
+    <li><div>The instrument's driver parses it into <code>AstmMessage</code>; the instrument name is stamped on it.</div></li>
+    <li><div>Only messages with results or queries continue; the row becomes <code>PROCESSED</code>.</div></li>
+    <li><div>Published to <code>lis.inbound.x</code> with the routing key for its type, headers <code>instrumentName</code>, <code>messageType</code>, <code>resultCount</code>, <code>orderCount</code>. The service waits for the broker confirm and checks the message was routed; then <code>PUBLISHED</code>.</div></li>
+  </ol>
+</section>
+
+<!-- 9 -->
+<section id="flow-orders">
+  <h2><span class="n">09</span>Flow: query and order round trip</h2>
+  <p class="sub">What the Sysmex does for every barcoded tube when query-to-host is on. ORTHO VISION follows the same path with its own records.</p>
+  <figure class="figure">
+    <div class="canvas">
+      <svg class="dg" viewBox="0 0 990 545" role="img" aria-label="Sequence: analyzer query is stored and published; core LIS answers with order JSON; service stores order, sends ASTM order, marks success.">
+        <defs><marker id="s2-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0L10,5L0,10z"/></marker>
+        <marker id="s2-aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah acc" d="M0,0L10,5L0,10z"/></marker></defs>
+        <rect class="box sysmex" x="0" y="8" width="140" height="40" rx="6"/><text x="70" y="33" text-anchor="middle" class="b">Analyzer</text>
+        <rect class="box acc" x="230" y="8" width="140" height="40" rx="6"/><text x="300" y="33" text-anchor="middle" class="b">astm-server</text>
+        <rect class="box" x="430" y="8" width="140" height="40" rx="6"/><text x="500" y="33" text-anchor="middle" class="b">SQL Server</text>
+        <rect class="box" x="620" y="8" width="140" height="40" rx="6"/><text x="690" y="33" text-anchor="middle" class="b">RabbitMQ</text>
+        <rect class="box" x="820" y="8" width="140" height="40" rx="6"/><text x="890" y="33" text-anchor="middle" class="b">Core LIS</text>
+        <line class="life" x1="70" y1="48" x2="70" y2="476"/><line class="life" x1="300" y1="48" x2="300" y2="476"/>
+        <line class="life" x1="500" y1="48" x2="500" y2="476"/><line class="life" x1="690" y1="48" x2="690" y2="476"/><line class="life" x1="890" y1="48" x2="890" y2="476"/>
+
+        <line class="ln" x1="70" y1="86" x2="300" y2="86" marker-end="url(#s2-a)"/><text x="185" y="80" text-anchor="middle" class="m">ENQ · Q record · EOT</text>
+        <line class="ln" x1="300" y1="122" x2="500" y2="122" marker-end="url(#s2-a)"/><text x="400" y="116" text-anchor="middle" class="m">INSERT · RECEIVED</text>
+        <line class="ln acc" x1="300" y1="158" x2="690" y2="158" marker-end="url(#s2-aa)"/><text x="495" y="152" text-anchor="middle" class="m">QUERY · key results.instrument.astm.query</text>
+        <line class="ln acc" x1="690" y1="194" x2="890" y2="194" marker-end="url(#s2-aa)"/><text x="790" y="188" text-anchor="middle" class="m">deliver</text>
+        <rect class="note" x="785" y="215" width="200" height="26" rx="5"/><text x="885" y="232" text-anchor="middle" class="m">find the tests for the sample</text>
+        <line class="ln acc" x1="890" y1="268" x2="690" y2="268" marker-end="url(#s2-aa)"/><text x="790" y="262" text-anchor="middle" class="m">order JSON → lis.outbound.x</text>
+        <text x="790" y="284" text-anchor="middle" class="m mono">orders.instrument.astm.worklist</text>
+        <line class="ln acc" x1="690" y1="316" x2="300" y2="316" marker-end="url(#s2-aa)"/><text x="495" y="310" text-anchor="middle" class="m">consume lis.orders.instrument.astm.outbound.q</text>
+        <line class="ln" x1="300" y1="352" x2="500" y2="352" marker-end="url(#s2-a)"/><text x="400" y="346" text-anchor="middle" class="m">INSERT PENDING → PROCESSING</text>
+        <line class="ln" x1="300" y1="388" x2="70" y2="388" marker-end="url(#s2-a)"/><text x="185" y="382" text-anchor="middle" class="m">ENQ · H P C O C L · EOT</text>
+        <line class="ln" x1="70" y1="424" x2="300" y2="424" marker-end="url(#s2-a)"/><text x="185" y="418" text-anchor="middle" class="m">ACK per frame</text>
+        <line class="ln" x1="300" y1="460" x2="500" y2="460" marker-end="url(#s2-a)"/><text x="400" y="454" text-anchor="middle" class="m">UPDATE · SUCCESS</text>
+        <rect class="note" x="140" y="486" width="760" height="46" rx="5"/>
+        <text x="520" y="505" text-anchor="middle" class="m">The round trip must finish inside the IPU's query wait time, so the LIS must answer automatically.</text>
+        <text x="520" y="523" text-anchor="middle" class="m">Analyzer offline: the order stays PENDING and the retry job sends it after the analyzer reconnects.</text>
+      </svg>
+    </div>
+    <figcaption>Orders are routed to the right analyzer by the JSON field <code>instrumentName</code>, which must equal a configured <code>lis.instruments[].name</code> exactly.</figcaption>
+  </figure>
+  <h3>What happens to a bad order message</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Order message</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Not valid JSON, no <code>instrumentName</code>, or an unknown/disabled instrument</td><td>Rejected without requeue → <code>lis.orders.instrument.astm.outbound.dlq</code>; no database row</td></tr>
+      <tr><td>Valid, but SQL Server unavailable</td><td>Exception → requeued; after the queue's delivery limit (3 dev, 5 stage/prod) → DLQ</td></tr>
+      <tr><td>Valid and stored, immediate send fails</td><td>Kept as <code>PENDING</code> and delivered by the retry job; the broker message is acknowledged</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 10 -->
+<section id="states">
+  <h2><span class="n">10</span>Statuses and retries</h2>
+  <h3>Orders (<code>ASTMOrderMessages.Status</code>)</h3>
+  <figure class="figure">
+    <div class="canvas">
+      <svg class="dg" viewBox="0 0 990 235" role="img" aria-label="Order states: PENDING to PROCESSING; PROCESSING to SUCCESS, FAILED, or back to PENDING for retry.">
+        <defs><marker id="o-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0L10,5L0,10z"/></marker></defs>
+        <text x="30" y="80" class="m">order JSON stored</text>
+        <rect class="box" x="30" y="90" width="150" height="44" rx="22"/><text x="105" y="117" text-anchor="middle" class="b mono">PENDING</text>
+        <rect class="box acc" x="380" y="90" width="170" height="44" rx="22"/><text x="465" y="117" text-anchor="middle" class="b mono">PROCESSING</text>
+        <rect class="box ok" x="760" y="30" width="150" height="44" rx="22"/><text x="835" y="57" text-anchor="middle" class="b mono">SUCCESS</text>
+        <rect class="box bad" x="760" y="150" width="150" height="44" rx="22"/><text x="835" y="177" text-anchor="middle" class="b mono">FAILED</text>
+        <line class="ln" x1="180" y1="112" x2="380" y2="112" marker-end="url(#o-a)"/><text x="280" y="104" text-anchor="middle" class="m">analyzer connected and idle</text>
+        <line class="ln" x1="550" y1="104" x2="760" y2="56" marker-end="url(#o-a)"/><text x="640" y="68" text-anchor="middle" class="m">every frame ACKed</text>
+        <line class="ln" x1="550" y1="120" x2="760" y2="168" marker-end="url(#o-a)"/><text x="650" y="172" text-anchor="middle" class="m">attempts used up</text>
+        <path class="ln" d="M465,134 C465,205 105,205 105,140" marker-end="url(#o-a)"/>
+        <text x="285" y="222" text-anchor="middle" class="m">not connected · busy · ENQ contention · send failed → RetryCount+1, NextRetryAt (job every 60 s)</text>
+      </svg>
+    </div>
+    <figcaption>Retry delays: 5 min when the analyzer is not connected, 2 min after contention. <code>max-attempts</code> 3 in local; then <code>FAILED</code> with <code>ErrorMessage</code>.</figcaption>
+  </figure>
+  <h3>Messages from analyzers (<code>ASTMServerMessages.Status</code>)</h3>
+  <div class="flow">
+    <span class="st">RECEIVED</span><span class="arr">→</span><span class="st">PROCESSED</span><span class="arr">→</span><span class="st ok">PUBLISHED</span>
+  </div>
+  <div class="flow">
+    <span class="st">PROCESSED</span><span class="arr">→ broker down / refused / unroutable →</span><span class="st warn">PUBLISH_RETRY</span><span class="arr">→ every 2 min →</span><span class="st ok">PUBLISHED</span>
+  </div>
+  <div class="flow">
+    <span class="st bad">ERROR</span><span class="arr">JSON could not be built, or the raw message cannot be parsed again on retry</span>
+  </div>
+  <div class="callout warn">
+    <strong>Fixed 2026-11-16: retry lost results</strong>
+    <p>The parsed JSON was never stored (no column for it), so every <code>PUBLISH_RETRY</code> row read back by the retry job was marked <code>ERROR</code> instead of resent. The retry job now re-parses <code>RawMessage</code> with the instrument's driver and keeps the original type (a QC message republishes as <code>RETRY_QC_RESULT</code> to the QC lane).</p>
+  </div>
+</section>
+
+<!-- 11 -->
+<section id="rabbitmq">
+  <h2><span class="n">11</span>RabbitMQ topology</h2>
+  <p class="sub">Standard Infinity LIS topology, provisioned by <code>infinity-lis-rabbitmq-topology.ps1</code> (platform script, not in this repo). Verified on the dev broker 192.168.20.254 on 2026-11-16.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Flow</th><th>Exchange</th><th>Routing key</th><th>Queue</th></tr></thead>
+    <tbody>
+      <tr><td>Patient results (<code>RESULT</code>)</td><td><code>lis.inbound.x</code></td><td><code>results.instrument.astm</code></td><td><code>lis.results.instrument.inbound.q</code></td></tr>
+      <tr><td>QC results (<code>QC_RESULT</code>)</td><td><code>lis.inbound.x</code></td><td><code>qc.instrument.astm</code></td><td><code>lis.qc.instrument.inbound.q</code></td></tr>
+      <tr><td>Queries (<code>QUERY</code>)</td><td><code>lis.inbound.x</code></td><td><code>results.instrument.astm.query</code></td><td><code>lis.results.instrument.inbound.q</code> (no query lane yet)</td></tr>
+      <tr><td>Orders to analyzers</td><td><code>lis.outbound.x</code></td><td><code>orders.instrument.astm.worklist</code></td><td><code>lis.orders.instrument.astm.outbound.q</code></td></tr>
+      <tr><td>Order cancels</td><td><code>lis.outbound.x</code></td><td><code>orders.instrument.astm.cancel</code></td><td>same order queue (no special handling yet)</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li>All exchanges are topic exchanges. Every work queue is a quorum queue with a delivery limit, <code>reject-publish</code> overflow and a paired <code>.dlq</code> on <code>lis.dlx</code> (original routing key kept).</li>
+    <li>User <code>astm-server</code> may publish only to <code>lis.inbound.x</code> and consume only the ASTM order queue; it cannot create anything. Hence <code>lis.messaging.declare-topology: false</code> in every profile.</li>
+    <li><code>lis.results.instrument.inbound.q</code> is shared with Mirth (HL7 analyzers). Never purge it.</li>
+    <li>Routing per type is <code>AppConfig.InstrumentConfig.routingKeyFor()</code>; it ignores a <code>RETRY_</code> prefix and falls back to <code>resultsRoutingKey</code> when <code>qcRoutingKey</code> or <code>queryRoutingKey</code> is empty.</li>
+  </ul>
+</section>
+
+<!-- 12 -->
+<section id="database">
+  <h2><span class="n">12</span>Database tables</h2>
+  <p class="sub">SQL Server, database <code>infinity-lis-shard-1</code> in local. Plain JDBC; the tables already exist wherever ORTHO VISION has run. Only this service reads or writes them.</p>
+  <div class="grid2">
+    <div class="card"><h4><code>ASTMServerMessages</code></h4>
+      <p>Every message received from an analyzer (except keep-alives). Audit trail and publish retry list.</p>
+      <p class="mono" style="font-size:12.5px">Id, MessageId, InstrumentName, RawMessage, MessageType, Status, ReceivedAt, ProcessedAt, PublishedAt, ErrorMessage, RemoteAddress</p>
+      <p>Status: <code>RECEIVED</code>, <code>PROCESSED</code>, <code>PUBLISHED</code>, <code>PUBLISH_RETRY</code>, <code>ERROR</code></p></div>
+    <div class="card"><h4><code>ASTMOrderMessages</code></h4>
+      <p>Every order consumed from RabbitMQ, until it is delivered or given up.</p>
+      <p class="mono" style="font-size:12.5px">Id, MessageId, InstrumentName, MessageContent, Status, RetryCount, MaxRetryAttempts, CreatedAt, UpdatedAt, LastRetryAt, NextRetryAt, ErrorMessage</p>
+      <p>Status: <code>PENDING</code>, <code>PROCESSING</code>, <code>SUCCESS</code>, <code>FAILED</code></p></div>
+  </div>
+  <pre><code>-- recent traffic per analyzer
+SELECT TOP 20 Id, InstrumentName, MessageType, Status, ReceivedAt, ErrorMessage
+FROM ASTMServerMessages ORDER BY Id DESC;
+SELECT TOP 20 Id, InstrumentName, Status, RetryCount, NextRetryAt, ErrorMessage
+FROM ASTMOrderMessages ORDER BY Id DESC;</code></pre>
+</section>
+
+<!-- 13 -->
+<section id="json">
+  <h2><span class="n">13</span>JSON contract with the core LIS</h2>
+  <p>Body is the serialized <code>AstmMessage</code> (astm-model). Property names are camelCase; dates are <code>yyyyMMddHHmmss</code> strings. Field-by-field details, including Sysmex result categories, are in <code>docs/sysmex-xn-integration.md</code>.</p>
+  <pre><code>{
+  "messageType": "RESULT",            // RESULT | QC_RESULT | QUERY | RETRY_...
+  "instrumentName": "SysmexXN",       // also required on orders, must match config
+  "headerRecord":   { ... },
+  "patientRecord":  { "practiceAssignedPatientId": "100", "patientName": "Brown^Jim", ... },
+  "orderRecords":   [ { "specimenId": "1234567890", "rackNumber": "2", "rackPosition": "1", ... } ],
+  "resultRecords":  [ { "parameterName": "WBC", "dataValue": "7.81", "units": "10*3/uL",
+                        "resultCategory": "CLINICAL", ... } ],
+  "queryRecords":   [ ... ],
+  "mResultRecords": [ ... ],          // ORTHO VISION only
+  "commentRecords": [ { "scope": "RESULT", "commentText": "1^WBC HIGH\\23^Need to PLT-F analysis",
+                        "ruleReferences": [ { "ruleNumber": "1", "ruleName": "WBC HIGH" }, ... ] } ],
+  "terminatorRecord": { ... }
+}</code></pre>
+</section>
+
+<!-- 14 -->
+<section id="config">
+  <h2><span class="n">14</span>Configuration and deployment</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Profile</th><th>RabbitMQ vhost (default)</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>local</code></td><td><code>infinity-lis-dev</code> on 192.168.20.254</td><td>DB 192.168.20.123, <code>infinity-lis-shard-1</code></td></tr>
+      <tr><td><code>dev</code></td><td><code>infinity-lis-dev</code></td><td>hosts from environment</td></tr>
+      <tr><td><code>staging</code></td><td><code>infinity-lis-stage</code></td><td>Sysmex enabled by <code>SYSMEX_XN_ENABLED</code> (default true)</td></tr>
+      <tr><td><code>prod</code></td><td><code>infinity-lis-prod</code></td><td>no defaults for secrets; Sysmex off unless <code>SYSMEX_XN_ENABLED=true</code></td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Environment variables:</strong> <code>DB_PASSWORD</code> (always), <code>RABBITMQ_PASSWORD</code> (always, user <code>astm-server</code>), optional <code>DB_HOST</code>, <code>DB_NAME</code>, <code>DB_USERNAME</code>, <code>RABBITMQ_HOST</code>, <code>RABBITMQ_PORT</code>, <code>RABBITMQ_VHOST</code>, <code>RABBITMQ_USERNAME</code>, <code>ORTHO_VISION_PORT</code>, <code>SYSMEX_XN_PORT</code>, <code>LOG_PATH</code>. Spring YAML lists replace each other, so every profile lists every instrument in full.</p>
+  <pre><code>lis:
+  instruments:
+    - name: SysmexXN                      # identity: orders must carry this name
+      port: 5000                          # the IPU's Host Computer 1 port
+      driverClassName: com.lis.astm.server.driver.impl.SysmexXnDriver
+      enabled: true
+      orderQueueName: lis.orders.instrument.astm.outbound.q
+      resultQueueName: lis.results.instrument.inbound.q
+      exchangeName: lis.inbound.x
+      resultsRoutingKey: results.instrument.astm
+      qcRoutingKey: qc.instrument.astm
+      queryRoutingKey: results.instrument.astm.query
+  messaging:
+    enabled: true
+    declare-topology: false</code></pre>
+  <h3>Deploying on Windows</h3>
+  <ol class="steps">
+    <li><div><code>mvn -B clean package</code> (JDK 17, 21 or 25; output runs on Java 8+). Deploy <code>astm-server/target/astm-server-1.0.0.jar</code>.</div></li>
+    <li><div>Install as a Windows service with NSSM; set the environment variables on the service.</div></li>
+    <li><div>Open each analyzer port, limited to that analyzer: <code>New-NetFirewallRule -DisplayName "ASTM SysmexXN" -Direction Inbound -Protocol TCP -LocalPort 5000 -RemoteAddress &lt;IPU IP&gt; -Action Allow</code></div></li>
+    <li><div>Sysmex IPU: change only Host Computer 1 IP and port (format stays <em>XN series ASTM1381-02/ASTM1394-97</em>); leave Host Computer 2 alone. Roll back from the lab's screenshots.</div></li>
+    <li><div>Logs: rolling files under <code>LOG_PATH</code> (default <code>D:/astm-interface-services-data/logs</code> in local), plain text and HTML, 30 days kept.</div></li>
+  </ol>
+  <p><strong>Adding an analyzer:</strong> write a driver with tests built from the vendor's example messages, add an instrument entry to every <code>application-*.yml</code>, add a simulator test-case file, update this page.</p>
+</section>
+
+<!-- 15 -->
+<section id="testing">
+  <h2><span class="n">15</span>Testing</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Level</th><th>What</th><th>Where</th></tr></thead>
+    <tbody>
+      <tr><td>Unit and protocol tests</td><td>Checksums, framing, state machine against a fake analyzer on a real socket pair; both drivers against vendor examples; routing, confirms, order rejection, retry rebuild; this page against the configuration</td><td><code>mvn -B verify</code> (CI: <code>.github/workflows/build.yml</code>)</td></tr>
+      <tr><td>Simulator</td><td>Plays ORTHO VISION or Sysmex XN over TCP from JSON test cases; listens for orders</td><td><code>java -jar instrument-simulator-1.0.0.jar localhost 5000 sysmex-xn-test-cases.json</code></td></tr>
+      <tr><td>Simulator runbook</td><td>Step-by-step Sysmex test with expected values and exit criteria</td><td><code>docs/sysmex-xn-simulator-test.md</code></td></tr>
+      <tr><td>Stage checklist</td><td>What to verify on stage per analyzer</td><td><code>docs/staging-test-checklist.md</code></td></tr>
+      <tr><td>Message inspection</td><td>Paste raw ASTM and see the records</td><td><code>astm-parser-swing</code></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 16 -->
+<section id="boundary">
+  <h2><span class="n">16</span>Could RabbitMQ be the only connection to the LIS?</h2>
+  <p>Today the service has exactly two outside dependencies: RabbitMQ (to the core LIS) and its own SQL Server tables. There are no API calls, and the core LIS never reads these tables. The question is whether the SQL Server connection can go too.</p>
+  <h3>What the database does today</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Job</th><th>Why it matters</th><th>RabbitMQ-only replacement</th></tr></thead>
+    <tbody>
+      <tr><td>1. Audit of every raw message</td><td>Proof of what the analyzer sent; troubleshooting</td><td>Publish an audit event (raw text, status changes) to a new <code>audit.instrument.astm</code> lane; the core LIS stores it</td></tr>
+      <tr><td>2. Outbox when the broker is down</td><td>The analyzer keeps sending; results must not be lost</td><td>Still needs a local durable store: a small embedded file database on the service machine (no network DB)</td></tr>
+      <tr><td>3. Holding orders until the analyzer connects</td><td>Analyzers go offline for maintenance</td><td>Keep orders in RabbitMQ: per-instrument order queues consumed only while that analyzer is connected, acknowledged only after the analyzer ACKs</td></tr>
+      <tr><td>4. Order status and retries</td><td>Know whether an order reached the analyzer</td><td>Publish <code>SENT</code>/<code>FAILED</code> status events to the LIS on a new lane; the LIS shows them (today the LIS cannot see order delivery at all)</td></tr>
+    </tbody>
+  </table></div>
+  <figure class="figure">
+    <div class="canvas">
+      <svg class="dg" viewBox="0 0 990 300" role="img" aria-label="Proposed: analyzers to astm-server with local outbox; RabbitMQ lanes; core LIS is the only database owner.">
+        <defs><marker id="f-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0L10,5L0,10z"/></marker></defs>
+        <rect class="box" x="20" y="100" width="170" height="90" rx="8"/>
+        <text x="36" y="128" class="b">Analyzers</text><text x="36" y="148" class="m">ORTHO VISION</text><text x="36" y="168" class="m">Sysmex XN, others</text>
+        <rect class="box acc" x="250" y="60" width="250" height="170" rx="10"/>
+        <text x="266" y="86" class="b">astm-server</text><text x="266" y="106" class="m">no SQL Server connection</text>
+        <rect class="inner box dash" x="266" y="126" width="218" height="86" rx="6"/>
+        <text x="280" y="150" class="b">Local outbox</text><text x="280" y="170" class="m">embedded file store</text><text x="280" y="190" class="m">unsent messages only</text>
+        <rect class="box" x="560" y="20" width="220" height="260" rx="8"/>
+        <text x="576" y="46" class="b">RabbitMQ lanes</text>
+        <text x="576" y="74" class="mono">results.instrument.astm</text>
+        <text x="576" y="98" class="mono">qc.instrument.astm</text>
+        <text x="576" y="122" class="mono">queries.instrument.astm *</text>
+        <text x="576" y="146" class="mono">audit.instrument.astm *</text>
+        <text x="576" y="170" class="mono">status.instrument.astm *</text>
+        <text x="576" y="194" class="mono">orders.instrument.astm.&lt;name&gt; *</text>
+        <text x="576" y="262" class="m">* new in the topology script</text>
+        <rect class="box" x="830" y="50" width="145" height="80" rx="8"/>
+        <text x="846" y="78" class="b">Core LIS</text><text x="846" y="98" class="m">single owner</text><text x="846" y="116" class="m">of all data</text>
+        <rect class="box" x="830" y="190" width="145" height="64" rx="8"/>
+        <text x="846" y="216" class="b">LIS database</text><text x="846" y="236" class="m">audit, orders, results</text>
+        <line class="ln" x1="190" y1="145" x2="250" y2="145" marker-start="url(#f-a)" marker-end="url(#f-a)"/>
+        <line class="ln" x1="500" y1="110" x2="560" y2="110" marker-end="url(#f-a)"/>
+        <line class="ln" x1="560" y1="190" x2="500" y2="190" marker-end="url(#f-a)"/>
+        <line class="ln" x1="780" y1="90" x2="830" y2="90" marker-start="url(#f-a)" marker-end="url(#f-a)"/>
+        <line class="ln" x1="902" y1="130" x2="902" y2="190" marker-end="url(#f-a)"/>
+      </svg>
+    </div>
+    <figcaption>Proposed target, not built. The service keeps only a local outbox; every record of what happened is sent to the core LIS, which is the only system that writes a shared database.</figcaption>
+  </figure>
+  <div class="verdict">
+    <div class="card"><h4><span class="tag ok">for</span></h4><ul><li>No database credentials or schema on the instrument server</li><li>One owner for all data; the LIS can show order delivery status</li><li>Simpler deployment: JAR, broker credentials, firewall rule</li></ul></div>
+    <div class="card"><h4><span class="tag warn">against / cost</span></h4><ul><li>New lanes in the topology script and new consumers in the core LIS</li><li>A local store is still needed for broker outages</li><li>Order handling changes (per-analyzer queues, acknowledge after delivery)</li></ul></div>
+  </div>
+  <div class="callout ok">
+    <strong>Recommendation</strong>
+    <p>Yes, it is possible and it is the cleaner boundary, as long as a small local outbox stays on the service machine. Do not send application log files over RabbitMQ; keep them as rotating local files and publish only the business events (audit and order status). Keep SQL Server for the current simulator, stage and Sysmex go-live tests, as decided. Then move in three steps: (1) add the audit and order-status events alongside the database; (2) let the core LIS consume and store them; (3) replace SQL Server with the local outbox and per-analyzer order queues.</p>
+  </div>
+</section>
+
+<!-- 17 -->
+<section id="risks">
+  <h2><span class="n">17</span>Open items and risks</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Item</th><th>Impact</th><th>Owner / next step</th></tr></thead>
+    <tbody>
+      <tr><td>Simulator test, then the real Sysmex IPU</td><td><span class="tag warn">before go-live</span></td><td>Run <code>docs/sysmex-xn-simulator-test.md</code>; then one QC and one patient sample on the IPU</td></tr>
+      <tr><td>Ward position in the Sysmex P record (spec table vs examples)</td><td><span class="tag warn">bench check</span></td><td>Driver reads field 25 or 24; confirm on the IPU</td></tr>
+      <tr><td>No query lane in the standard topology</td><td><span class="tag warn">LIS design</span></td><td>Recommend <code>lis.queries.instrument.inbound.q</code> bound to <code>queries.instrument.#</code>; then a config change only</td></tr>
+      <tr><td>No consumer yet for the results and QC queues</td><td><span class="tag bad">blocks go-live</span></td><td>Core LIS team</td></tr>
+      <tr><td>Order cancel not handled specially</td><td><span class="tag warn">LIS design</span></td><td>LIS sends cancel as an order with action code <code>C</code></td></tr>
+      <tr><td>Production cutover from the old <code>ortho-vision.*</code> queues</td><td><span class="tag warn">plan</span></td><td>Core LIS must consume the new queues when this version reaches prod</td></tr>
+      <tr><td>No source-address check on analyzer ports</td><td><span class="tag warn">security</span></td><td>Firewall rule with <code>-RemoteAddress</code></td></tr>
+      <tr><td>Spring Boot 2.7 is end of life</td><td><span class="tag">maintenance</span></td><td>Upgrade later (readiness item C10)</td></tr>
+      <tr><td>Passwords in old git history</td><td><span class="tag warn">security</span></td><td>Rotate them</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 18 -->
+<section id="upkeep">
+  <h2><span class="n">18</span>Keeping this page true</h2>
+  <p>This file is the one place to understand the repository. The other documents in <code>docs/</code> go deeper on a single concern.</p>
+  <ul>
+    <li><strong>Rule:</strong> a change to a flow, record type, message type, queue, routing key, table, status, port, driver, startup step or deployment step updates this page in the same commit. The rule is in <code>CLAUDE.md</code>, so Claude Code applies it automatically.</li>
+    <li><strong>Automatic check:</strong> <code>ArchitectureDocTest</code> runs in every build. It fails when an instrument name, port, driver class, queue, exchange or routing key from any <code>application-*.yml</code>, or a status value of either table, is missing from this page.</li>
+    <li>Change the "Updated" date in the header when you edit.</li>
+  </ul>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Document</th><th>Use it for</th></tr></thead>
+    <tbody>
+      <tr><td><code>docs/sysmex-xn-integration.md</code></td><td>Sysmex IPU settings and the full JSON field mapping</td></tr>
+      <tr><td><code>docs/sysmex-xn-simulator-test.md</code></td><td>Simulator runbook with expected values</td></tr>
+      <tr><td><code>docs/staging-test-checklist.md</code></td><td>Stage verification per analyzer</td></tr>
+      <tr><td><code>docs/sysmex-xn-readiness-review.md</code></td><td>Code review against the Sysmex spec and fix status</td></tr>
+      <tr><td><code>astm_message_specs.md</code></td><td>ORTHO VISION record field notes</td></tr>
+      <tr><td><code>README.md</code></td><td>Build, run and Windows service installation commands</td></tr>
+    </tbody>
+  </table></div>
+  <footer>ASTM Interface Service · github.com/krishnareddyML/astm-interface-service</footer>
+</section>
+</main>
+</div>
+</body>
+</html>

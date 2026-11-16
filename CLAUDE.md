@@ -3,6 +3,19 @@
 Bidirectional ASTM E1381-02 / E1394-97 interface between laboratory analyzers and the Infinity LIS.
 Java 8 source level, Spring Boot 2.7, Maven multi-module. Deployed on Windows as a service.
 
+## Architecture page: keep it current (mandatory)
+
+`docs/architecture.html` is the single overview of this repository (modules, startup, ports, every
+flow with diagrams, record and message types per analyzer, RabbitMQ topology, tables and statuses,
+configuration, deployment, open items). Read it first to understand the system.
+
+Any change to a flow, record or message type, queue, exchange, routing key, table or column, status,
+port, driver, retry rule, startup or deployment step must update `docs/architecture.html` in the same
+commit: text, tables and the affected SVG diagram, plus the "Updated" date in its header.
+`ArchitectureDocTest` (astm-server tests) fails the build when configured instruments, ports, drivers,
+queues, exchanges, routing keys or statuses are missing from the page; fix the page, never the test.
+The deeper single-topic documents in `docs/` must agree with the page.
+
 ## Modules
 
 - `astm-model` - shared record model (`AstmMessage`, H/P/O/R/Q/C/M/L records), Jackson JSON, no Spring.
@@ -68,6 +81,7 @@ to the `.dlq`. Every queue is quorum with a delivery limit and DLQ.
 
 ## Documents
 
+- `docs/architecture.html` - start here: the whole system on one page (see the rule above).
 - `docs/sysmex-xn-readiness-review.md` - review of the code against the Sysmex XN spec and status.
 - `docs/sysmex-xn-integration.md` - IPU settings and the LIS JSON contract for the XN.
 - `docs/staging-test-checklist.md` - what to verify on stage for each analyzer.

@@ -1,5 +1,7 @@
 # ASTM Interface Service - Complete Laboratory Integration Solution
 
+> **Start here:** open [docs/architecture.html](docs/architecture.html) in a browser for the whole system on one page (modules, startup, flows with diagrams, record types, RabbitMQ, database, open items).
+
 ## 🔬 Overview
 
 This is a **production-grade, enterprise-ready ASTM E1381/E1394 Interface Service** designed for reliable bidirectional communication between laboratory instruments and Laboratory Information Systems (LIS). The service provides a complete solution for ASTM protocol implementation with comprehensive model support, server capabilities, testing tools, and deployment options.

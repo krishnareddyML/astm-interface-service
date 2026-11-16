@@ -62,7 +62,7 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     virtual-host: ${RABBITMQ_VHOST:infinity-lis-dev}
     username: ${RABBITMQ_USERNAME:astm-server}
-    password: ${RABBITMQ_PASSWORD}
+    password: ${RABBITMQ_PASSWORD:Welcome@1}
 
 server:
   port: 8080

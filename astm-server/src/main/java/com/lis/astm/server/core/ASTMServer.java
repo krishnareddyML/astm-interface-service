@@ -173,7 +173,8 @@ public class ASTMServer {
         }
     }
 
-    private InstrumentDriver createDriver(AppConfig.InstrumentConfig config) throws ReflectiveOperationException {
+    /** New driver instance for the instrument (drivers are not shared between sessions). */
+    public static InstrumentDriver createDriver(AppConfig.InstrumentConfig config) throws ReflectiveOperationException {
         String className = config.getDriverClassName();
         if (className == null || className.trim().isEmpty()) {
             throw new IllegalStateException("No driverClassName configured for instrument '" + config.getName() + "'");
