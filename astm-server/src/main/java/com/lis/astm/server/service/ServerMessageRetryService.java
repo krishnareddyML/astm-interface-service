@@ -65,7 +65,11 @@ public class ServerMessageRetryService {
 
             // Step 2: Deserialize the JSON back into a complete AstmMessage object.
             AstmMessage completeMessage = objectMapper.readValue(parsedJson, AstmMessage.class);
-            completeMessage.setMessageType("RETRY_" + serverMessage.getMessageType());
+            // Keep the driver's type (e.g. QC_RESULT) rather than the stored raw type so a
+            // republished QC message is still routed to the QC lane, never the patient lane.
+            String originalType = completeMessage.getMessageType() != null
+                    ? completeMessage.getMessageType() : serverMessage.getMessageType();
+            completeMessage.setMessageType("RETRY_" + originalType);
 
             resultQueuePublisher.publishResult(serverMessage.getId(), completeMessage);
             

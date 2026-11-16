@@ -11,8 +11,7 @@ Commands are PowerShell, run from the repository root.
 ## 0. Prerequisites
 
 - JDK 17, 21 or 25 (the build is verified on 21 and 25; output runs on Java 8+) and Maven 3.6+.
-- Network access from this machine to SQL Server and RabbitMQ (the `local` profile defaults are
-  `192.168.20.123:1433` and `192.168.20.95:5672`; override with the variables in step 2).
+- Network access from this machine to SQL Server and RabbitMQ (the `local` profile defaults are  `192.168.20.123:1433` and `192.168.20.254:5672`, vhost `infinity-lis-dev`; override with the variables in step 2).
 - RabbitMQ management UI, normally `http://<rabbitmq-host>:15672`, with a login that can publish.
 - SQL Server tables `ASTMServerMessages` and `ASTMOrderMessages` already exist (they do wherever
   ORTHO VISION has run).
@@ -35,10 +34,15 @@ Artifacts:
 
 ```powershell
 $env:DB_PASSWORD = "<database password>"
+$env:RABBITMQ_PASSWORD = "<password of the astm-server RabbitMQ user>"
 # only if they differ from the profile defaults:
-# $env:DB_HOST = "192.168.20.123"; $env:DB_NAME = "infinity-lis"; $env:DB_USERNAME = "medsa"
-# $env:RABBITMQ_HOST = "192.168.20.95"; $env:RABBITMQ_USERNAME = "guest"; $env:RABBITMQ_PASSWORD = "guest"
+# $env:DB_HOST = "192.168.20.123"; $env:DB_NAME = "infinity-lis-shard-1"; $env:DB_USERNAME = "medsa"
+# $env:RABBITMQ_HOST = "192.168.20.254"; $env:RABBITMQ_VHOST = "infinity-lis-dev"; $env:RABBITMQ_USERNAME = "astm-server"
 ```
+
+The service connects as the `astm-server` user created by `infinity-lis-rabbitmq-topology.ps1`.
+That user may only publish to `lis.inbound.x` and consume `lis.orders.instrument.astm.outbound.q`;
+it cannot create anything, so the broker objects must already exist (they do on 192.168.20.254).
 
 Use the `staging` profile instead of `local` on the stage server (`--spring.profiles.active=staging`).
 
@@ -51,24 +55,30 @@ java -jar astm-server\target\astm-server-1.0.0.jar --spring.profiles.active=loca
 Expected log lines:
 
 ```
-[SysmexXN] Declared exchange sysmex-xn-exchange
-[SysmexXN] Declared queue sysmex-xn.results.queue
-[SysmexXN] Declared binding sysmex-xn-exchange -[result.inbound]-> sysmex-xn.results.queue
-[SysmexXN] Declared queue sysmex-xn.orders.queue
-Started order listener for instrument 'SysmexXN' on queue 'sysmex-xn.orders.queue'
+Setting up instrument queues (declare topology: false)...
+Started order listener on queue 'lis.orders.instrument.astm.outbound.q'
+Configured messaging for instrument 'OrthoVision': orders from lis.orders.instrument.astm.outbound.q; publish to exchange lis.inbound.x with keys results=results.instrument.astm, qc=qc.instrument.astm, query=results.instrument.astm.query
+Configured messaging for instrument 'SysmexXN': ... (same)
 Listener started for 'OrthoVision' on port 9001 using driver ...OrthoVisionDriver
 Listener started for 'SysmexXN' on port 5000 using driver ...SysmexXnDriver
 ```
 
-For the existing ORTHO VISION objects a `Could not declare ... using it as is` warning is fine: it
-means the object already exists with slightly different settings and is reused.
+An `ACCESS_REFUSED` or `NOT_FOUND` for the order queue means a wrong vhost, password or missing
+topology. Check in the RabbitMQ UI (vhost `infinity-lis-dev`): **Queues >
+lis.orders.instrument.astm.outbound.q** shows 1 consumer.
 
-Check in the RabbitMQ UI: **Exchanges** shows `sysmex-xn-exchange`; **Queues** shows
-`sysmex-xn.results.queue` and `sysmex-xn.orders.queue`; the results queue's **Bindings** shows
-`sysmex-xn-exchange` with routing key `result.inbound`.
+Where things go (standard topology):
 
-> Nothing consumes `sysmex-xn.results.queue` yet, so test messages stay there for inspection.
-> Purge it at the end (section 8) before the LIS starts consuming it.
+| From the analyzer | Exchange / routing key | Queue |
+|---|---|---|
+| Patient results (`RESULT`) | `lis.inbound.x` / `results.instrument.astm` | `lis.results.instrument.inbound.q` |
+| QC results (`QC_RESULT`) | `lis.inbound.x` / `qc.instrument.astm` | `lis.qc.instrument.inbound.q` |
+| Host queries (`QUERY`) | `lis.inbound.x` / `results.instrument.astm.query` | `lis.results.instrument.inbound.q` (no query lane yet) |
+| Orders to the analyzer | `lis.outbound.x` / `orders.instrument.astm.worklist` | `lis.orders.instrument.astm.outbound.q` |
+
+> Nothing consumes the results and QC queues on the dev broker yet, so test messages stay there
+> for inspection. `lis.results.instrument.inbound.q` is shared with HL7 instruments (Mirth): never
+> purge it; remove only your own test messages (section 8).
 
 ## 4. Start the simulator (terminal 2)
 
@@ -81,8 +91,10 @@ Expected: the simulator prints a menu of 9 test cases, then "Listen for Orders f
 
 ## 5. Results from the analyzer
 
-How to inspect a published message: RabbitMQ UI, **Queues > sysmex-xn.results.queue > Get messages**,
-Ack mode **Nack message requeue true**, Messages **1**, then **Get Message(s)**.
+How to inspect a published message: RabbitMQ UI, **Queues > lis.results.instrument.inbound.q**
+(QC: `lis.qc.instrument.inbound.q`) **> Get messages**, Ack mode **Nack message requeue true**,
+Messages **1**, then **Get Message(s)**. The headers `instrumentName` and `messageType` and the
+routing key identify the message.
 
 How to inspect the database:
 
@@ -125,8 +137,8 @@ Queue message, check these values:
 | Menu | Case | Expected |
 |---|---|---|
 | 5 | Body fluid | `RESULT`; parameters `WBC-BF`, `RBC-BF`, `MN#`, `MN%`, `PMN#`, `PMN%`; empty `rackNumber` |
-| 6 | Real-time QC | `messageType QC_RESULT`; `specimenId QC-12345678`; `actionCode Q`; values `resultCategory QC` |
-| 7 | Manual QC | `QC_RESULT`; `specimenId 1` (QC file number) |
+| 6 | Real-time QC | in `lis.qc.instrument.inbound.q` (not the results queue); `messageType QC_RESULT`; `specimenId QC-12345678`; `actionCode Q`; values `resultCategory QC` |
+| 7 | Manual QC | in `lis.qc.instrument.inbound.q`; `QC_RESULT`; `specimenId 1` (QC file number) |
 | 8 | Slide result | `parameterName SMEAR`, `dataValue OK`, `resultCategory SLIDE` |
 | 9 | Accented name | no NAK in the simulator log; `patientName` `Müller^José` (accents intact) |
 
@@ -135,14 +147,19 @@ Queue message, check these values:
 This is the most important test: it is what the analyzer does for every barcoded tube.
 
 1. In the simulator choose **3** (sampler-mode inquiry).
-   Server log: `Parsed QUERY message from SysmexXN`. Queue message:
+   Server log: `Parsed QUERY message from SysmexXN`. Queue message (results queue, routing key
+   `results.instrument.astm.query`):
    `queryRecords[0]`: `rackNumber 2`, `rackPosition 1`, `sampleId 1234567890`,
    `sampleNumberAttribute B`, `requestInformationStatusCodes N`.
 2. In the simulator choose **10** (Listen for Orders from Server). Do this **before** step 3: a real
    analyzer is always listening, the simulator is not.
-3. In the RabbitMQ UI: **Queues > sysmex-xn.orders.queue > Publish message**. Leave Properties
-   empty (or `content_type = application/json`) and paste the contents of
-   `instrument-simulator\src\main\resources\test-messages\sysmex-xn-order-response.json`. Publish.
+3. In the RabbitMQ UI (logged in as admin): **Exchanges > lis.outbound.x > Publish message**,
+   Routing key `orders.instrument.astm.worklist` (this is how the core LIS will send it). Leave
+   Properties empty (or `content_type = application/json`) and paste the contents of
+   `instrument-simulator\src\main\resources\test-messages\sysmex-xn-order-response.json`. Publish;
+   the UI must say "Message published" (not "published, but not routed").
+   `instrumentName` in the JSON must be exactly `SysmexXN`: an order for an unknown or misspelt
+   instrument is rejected and lands in `lis.orders.instrument.astm.outbound.dlq`.
 4. Expected simulator output within a second:
 
    ```
@@ -186,7 +203,8 @@ Repeat steps 2 to 4 with edited copies of the JSON:
 | Analyzer offline | Exit the simulator (menu 11). Publish the order JSON. | Log: `Instrument 'SysmexXN' is not connected`. Row stays `PENDING`; the retry job (every minute) bumps `RetryCount` and sets `NextRetryAt` about 5 minutes ahead. |
 | Recovery | Start the simulator again, choose 10, wait for `NextRetryAt`. | Order delivered automatically, row becomes `SUCCESS`. After `max-attempts` (3 in `local`) without a connection the row becomes `FAILED`. |
 | Reconnect replaces stale session | With one simulator connected, start a second simulator on port 5000. | Log: `Instrument 'SysmexXN' already had a session ... Replacing it`. The second simulator works; the first one's next send fails. |
-| RabbitMQ down (optional) | Stop RabbitMQ briefly, send menu 4, start RabbitMQ. | Row `PUBLISH_RETRY`, then `PUBLISHED` within about 2 minutes. |
+| Bad order JSON | Publish `{"foo":1}` with the order routing key. | Log shows the rejection; the message is in `lis.orders.instrument.astm.outbound.dlq`; no database row. |
+| RabbitMQ down (optional) | Stop RabbitMQ briefly, send menu 4, start RabbitMQ. | Row `PUBLISH_RETRY`, then `PUBLISHED` within about 2 minutes. A row is marked `PUBLISHED` only after the broker confirms it. |
 
 ## 8. ORTHO VISION regression and cleanup
 
@@ -194,20 +212,24 @@ Repeat steps 2 to 4 with edited copies of the JSON:
    `java -jar instrument-simulator\target\instrument-simulator-1.0.0.jar localhost 9001`
    Send the keep-alive, a query and one result case. Expected: same behaviour as before this
    branch (rows `PUBLISHED` with `InstrumentName = 'OrthoVision'`).
-2. RabbitMQ UI: **Queues > sysmex-xn.results.queue > Purge Messages** so test data never reaches
-   the LIS.
+2. Remove the test messages so they never reach the LIS. **Do not purge**
+   `lis.results.instrument.inbound.q`: HL7 instrument results share it. If, as on the dev broker,
+   it holds only your test messages, use **Get messages** with Ack mode **Reject requeue false**
+   for that count (dead-letters them to the `.dlq`, which expires them). `lis.qc.instrument.inbound.q`
+   likewise.
 3. Optional: delete test rows (`WHERE InstrumentName = 'SysmexXN' AND ReceivedAt >= '<test start>'`).
 
 ## 9. Exit criteria before connecting the real analyzer
 
 - [ ] Build passes on the stage machine (section 1).
-- [ ] Queues, exchange and binding exist (section 3).
+- [ ] Service connects as `astm-server` and consumes the ASTM order queue (section 3).
+- [ ] Patient results in the results queue, QC only in the QC queue.
 - [ ] Full result published with every value in the 5.1 table correct.
 - [ ] QC typed `QC_RESULT`; accented name intact.
 - [ ] Order response matches the spec example byte for byte; row `SUCCESS`.
 - [ ] Offline order recovers after reconnect; second connection replaces the first.
 - [ ] ORTHO VISION regression unchanged.
-- [ ] Results queue purged.
+- [ ] Test messages removed from the results and QC queues.
 
 ## 10. Then: first run with the analyzer
 

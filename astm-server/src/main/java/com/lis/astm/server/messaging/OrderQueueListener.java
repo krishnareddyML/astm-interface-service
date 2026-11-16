@@ -2,6 +2,8 @@ package com.lis.astm.server.messaging;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lis.astm.model.AstmMessage;
+import com.lis.astm.server.config.AppConfig;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import com.lis.astm.server.core.ASTMServer;
 import com.lis.astm.server.core.InstrumentConnectionHandler;
 import com.lis.astm.server.model.OrderMessage;
@@ -22,6 +24,7 @@ public class OrderQueueListener {
     private final OrderMessageService orderMessageService;
     private final ASTMServer astmServer;
     private final ObjectMapper objectMapper;
+    private final AppConfig appConfig;
 
     /** Called for messages without a text content type (body delivered as bytes). JSON is UTF-8. */
     public void handleOrderMessage(byte[] messageBytes) {
@@ -30,20 +33,30 @@ public class OrderQueueListener {
 
     /** Called for messages published with a text/* content type (for example from the RabbitMQ web UI). */
     public void handleOrderMessage(String message) {
+        log.info("Received order message from queue: {}", message);
+
+        // A message that can never be processed is rejected without requeue, so the broker moves
+        // it to the dead-letter queue instead of acknowledging (losing) it.
+        AstmMessage astmMessage;
         try {
-            log.info("Received order message from queue: {}", message);
-            
-            AstmMessage astmMessage = objectMapper.readValue(message, AstmMessage.class);
-            if (astmMessage == null || astmMessage.getInstrumentName() == null) {
-                log.error("Invalid order message or missing instrument name.");
-                return;
-            }
-            
-            String instrumentName = astmMessage.getInstrumentName();
-            
-            //STEP 1: Save to database for persistence. This part is correct.
-            OrderMessage savedMessage = orderMessageService.saveOrderMessage(message, instrumentName);
-            
+            astmMessage = objectMapper.readValue(message, AstmMessage.class);
+        } catch (Exception e) {
+            throw new AmqpRejectAndDontRequeueException("Order message is not valid AstmMessage JSON: " + e.getMessage(), e);
+        }
+        if (astmMessage == null || astmMessage.getInstrumentName() == null || astmMessage.getInstrumentName().trim().isEmpty()) {
+            throw new AmqpRejectAndDontRequeueException("Order message has no instrumentName");
+        }
+        String instrumentName = astmMessage.getInstrumentName();
+        if (!isConfiguredInstrument(instrumentName)) {
+            throw new AmqpRejectAndDontRequeueException("Order message for unknown or disabled instrument '"
+                    + instrumentName + "' (instrumentName must match lis.instruments[].name exactly)");
+        }
+
+        // STEP 1: Save to database. If this fails the exception propagates, the message is
+        // requeued and redelivered (the broker's delivery limit then dead-letters it).
+        OrderMessage savedMessage = orderMessageService.saveOrderMessage(message, instrumentName);
+
+        try {
             // STEP 2: Attempt to queue the message for immediate processing.
             InstrumentConnectionHandler handler = astmServer.getConnectionHandler(instrumentName);
             
@@ -66,7 +79,17 @@ public class OrderQueueListener {
             //orderMessageService.processOrderMessage(savedMessage.getId());
             
         } catch (Exception e) {
-            log.error("Error handling order message: {}", message, e);
+            // The order is stored as PENDING; the retry job delivers it. Do not requeue (that
+            // would store it twice).
+            log.error("Order {} saved but immediate send failed; the retry job will deliver it.", savedMessage.getId(), e);
         }
+    }
+
+    private boolean isConfiguredInstrument(String instrumentName) {
+        if (appConfig.getInstruments() == null) return false;
+        for (AppConfig.InstrumentConfig instrument : appConfig.getInstruments()) {
+            if (instrument.isEnabled() && instrumentName.equals(instrument.getName())) return true;
+        }
+        return false;
     }
 }   

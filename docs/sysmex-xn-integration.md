@@ -31,7 +31,16 @@ Instrument name used everywhere (config, JSON, queues): `SysmexXN`
 
 ---
 
-## 2. Messages from the analyzer (published to `sysmex-xn.results.queue`)
+## 2. Messages from the analyzer (published to exchange `lis.inbound.x`)
+
+| `messageType` | Routing key | Queue |
+|---|---|---|
+| `RESULT` | `results.instrument.astm` | `lis.results.instrument.inbound.q` |
+| `QC_RESULT` | `qc.instrument.astm` | `lis.qc.instrument.inbound.q` (never patient filing) |
+| `QUERY` | `results.instrument.astm.query` | `lis.results.instrument.inbound.q` (until a query lane exists) |
+
+A republished message (after a broker outage) has the type prefixed with `RETRY_` (for example
+`RETRY_QC_RESULT`) and takes the same route.
 
 Every message the IPU sends is stored in `ASTMServerMessages`, parsed, and published as JSON
 (`AstmMessage`; property names are camelCase, dates are `yyyyMMddHHmmss` strings) with headers `instrumentName`, `messageType`, `resultCount`, `orderCount`.
@@ -39,7 +48,7 @@ Every message the IPU sends is stored in `ASTMServerMessages`, parsed, and publi
 ### 2.1 Inquiry (`messageType = QUERY`)
 
 The IPU asks for the order for one sample. **The LIS must answer within the IPU's query timeout**
-by publishing an order response (section 3) to `sysmex-xn.orders.queue`.
+by publishing an order response (section 3) to exchange `lis.outbound.x` with routing key `orders.instrument.astm.worklist`.
 
 ```json
 {
@@ -122,7 +131,7 @@ sent for QC data.
 
 ---
 
-## 3. Order response from the LIS (consumed from `sysmex-xn.orders.queue`)
+## 3. Order response from the LIS (consumed from `lis.orders.instrument.astm.outbound.q`)
 
 Publish one message per inquiry. The service persists it in `ASTMOrderMessages`, sends it on
 the open session, and marks it `SUCCESS`, or retries it (`PENDING` with `NextRetryAt`) when the
@@ -201,7 +210,7 @@ java -jar instrument-simulator/target/instrument-simulator.jar localhost 5000 sy
 ```
 
 Publish `instrument-simulator/src/main/resources/test-messages/sysmex-xn-order-response.json`
-to `sysmex-xn.orders.queue` while the simulator is in "Listen for Orders" mode to see the order
+to exchange `lis.outbound.x` with routing key `orders.instrument.astm.worklist` while the simulator is in "Listen for Orders" mode to see the order
 response the IPU would receive.
 
 Automated coverage: `mvn test` runs the driver against the spec's own example messages

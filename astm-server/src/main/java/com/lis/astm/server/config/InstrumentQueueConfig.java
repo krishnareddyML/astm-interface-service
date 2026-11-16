@@ -18,7 +18,9 @@ import org.springframework.context.annotation.Configuration;
 
 import javax.annotation.PostConstruct;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Per-instrument RabbitMQ setup.
@@ -30,7 +32,9 @@ import java.util.Map;
  *
  * <p>Objects that already exist with different settings (for example an exchange created by hand
  * as a topic exchange) are left as they are; the mismatch is logged and the existing object used.
- * Set {@code lis.messaging.declare-topology=false} to manage the broker objects entirely by hand.
+ * Set {@code lis.messaging.declare-topology=false} to manage the broker objects entirely by hand;
+ * that is required with the standard Infinity LIS topology, which is provisioned by the platform
+ * script and where the {@code astm-server} user has no configure permission.
  */
 @Configuration
 @ConditionalOnProperty(name = "lis.messaging.enabled", havingValue = "true")
@@ -57,6 +61,9 @@ public class InstrumentQueueConfig {
         log.info("Setting up instrument queues (declare topology: {})...", declareTopology);
         if (appConfig.getInstruments() == null) return;
 
+        // Instruments may share one order queue (the standard topology has a single ASTM order queue;
+        // OrderQueueListener routes each order by its instrumentName). One listener per queue.
+        Set<String> listenedQueues = new HashSet<>();
         for (AppConfig.InstrumentConfig instrument : appConfig.getInstruments()) {
             if (!instrument.isEnabled()) continue;
 
@@ -67,10 +74,12 @@ public class InstrumentQueueConfig {
                 log.error("Instrument '{}' has no orderQueueName; orders from the LIS cannot be received.", instrument.getName());
                 continue;
             }
-            setupQueueListener(instrument.getOrderQueueName(), instrument.getName());
-            log.info("Configured queues for instrument '{}': orders={}, results={} (exchange={}, routingKey={})",
-                    instrument.getName(), instrument.getOrderQueueName(), instrument.getResultQueueName(),
-                    instrument.getExchangeName(), instrument.getResultsRoutingKey());
+            if (listenedQueues.add(instrument.getOrderQueueName())) {
+                setupQueueListener(instrument.getOrderQueueName(), instrument.getName());
+            }
+            log.info("Configured messaging for instrument '{}': orders from {}; publish to exchange {} with keys results={}, qc={}, query={}",
+                    instrument.getName(), instrument.getOrderQueueName(), instrument.getExchangeName(),
+                    instrument.getResultsRoutingKey(), instrument.routingKeyFor("QC_RESULT"), instrument.routingKeyFor("QUERY"));
         }
     }
 
@@ -124,7 +133,7 @@ public class InstrumentQueueConfig {
             container.setConsumerArguments(consumerArgs);
 
             container.start();
-            log.info("Started order listener for instrument '{}' on queue '{}'", instrumentName, queueName);
+            log.info("Started order listener on queue '{}'", queueName);
         } catch (Exception e) {
             log.error("Failed to start order listener for instrument '{}' on queue '{}': {}", instrumentName, queueName, e.getMessage(), e);
         }

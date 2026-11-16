@@ -6,22 +6,29 @@ lis:
       port: 9001
       driverClassName: com.lis.astm.server.driver.impl.OrthoVisionDriver
       enabled: true
-      orderQueueName: ortho-vision.orders.queue
-      resultQueueName: ortho-vision.results.queue
-      resultsRoutingKey: result.inbound
-      exchangeName: ortho-vision-exchange
+      orderQueueName: lis.orders.instrument.astm.outbound.q
+      resultQueueName: lis.results.instrument.inbound.q
+      resultsRoutingKey: results.instrument.astm
+      qcRoutingKey: qc.instrument.astm
+      queryRoutingKey: results.instrument.astm.query
+      exchangeName: lis.inbound.x
 
     - name: SysmexXN
       port: 5000
       driverClassName: com.lis.astm.server.driver.impl.SysmexXnDriver
       enabled: ${SYSMEX_XN_ENABLED:true}
-      orderQueueName: sysmex-xn.orders.queue
-      resultQueueName: sysmex-xn.results.queue
-      resultsRoutingKey: result.inbound
-      exchangeName: sysmex-xn-exchange
+      orderQueueName: lis.orders.instrument.astm.outbound.q
+      resultQueueName: lis.results.instrument.inbound.q
+      resultsRoutingKey: results.instrument.astm
+      qcRoutingKey: qc.instrument.astm
+      queryRoutingKey: results.instrument.astm.query
+      exchangeName: lis.inbound.x
 
   messaging:
     enabled: true
+    # Standard topology is provisioned by infinity-lis-rabbitmq-topology.ps1; the astm-server
+    # user has no configure permission, so the service must not declare anything.
+    declare-topology: false
     retry:
       batch-size: 5
       max-attempts: 3
@@ -51,8 +58,9 @@ spring:
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USERNAME:guest}
-    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:infinity-lis-dev}
+    username: ${RABBITMQ_USERNAME:astm-server}
+    password: ${RABBITMQ_PASSWORD}
 
 server:
   port: 8084

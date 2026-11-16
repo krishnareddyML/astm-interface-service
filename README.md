@@ -209,7 +209,7 @@ Secrets are **not** stored in the repository. Set them in the environment (or in
 ```powershell
 set DB_PASSWORD=...            # required in every profile
 set DB_HOST=192.168.20.123     # optional overrides: DB_NAME, DB_USERNAME
-set RABBITMQ_PASSWORD=...      # RABBITMQ_HOST, RABBITMQ_PORT, RABBITMQ_USERNAME
+set RABBITMQ_PASSWORD=...      # RABBITMQ_HOST, RABBITMQ_PORT, RABBITMQ_VHOST, RABBITMQ_USERNAME
 ```
 
 ```yaml
@@ -220,20 +220,25 @@ lis:
       port: 9001
       driverClassName: com.lis.astm.server.driver.impl.OrthoVisionDriver
       enabled: true
-      orderQueueName: ortho-vision.orders.queue
-      resultQueueName: ortho-vision.results.queue
-      resultsRoutingKey: result.inbound
-      exchangeName: ortho-vision-exchange
+      orderQueueName: lis.orders.instrument.astm.outbound.q
+      resultQueueName: lis.results.instrument.inbound.q
+      resultsRoutingKey: results.instrument.astm
+      qcRoutingKey: qc.instrument.astm
+      queryRoutingKey: results.instrument.astm.query
+      exchangeName: lis.inbound.x
     - name: SysmexXN
       port: 5000
       driverClassName: com.lis.astm.server.driver.impl.SysmexXnDriver
       enabled: true
-      orderQueueName: sysmex-xn.orders.queue
-      resultQueueName: sysmex-xn.results.queue
-      resultsRoutingKey: result.inbound
-      exchangeName: sysmex-xn-exchange
+      orderQueueName: lis.orders.instrument.astm.outbound.q
+      resultQueueName: lis.results.instrument.inbound.q
+      resultsRoutingKey: results.instrument.astm
+      qcRoutingKey: qc.instrument.astm
+      queryRoutingKey: results.instrument.astm.query
+      exchangeName: lis.inbound.x
   messaging:
     enabled: true
+    declare-topology: false   # standard topology is provisioned by infinity-lis-rabbitmq-topology.ps1
 ```
 
 Profile YAML lists are replaced, not merged, so every profile must list each instrument in full
@@ -285,7 +290,8 @@ set DB_NAME=ASTM_Interface_Prod
 set DB_USERNAME=astm_service_user
 set DB_PASSWORD=<secret>
 set RABBITMQ_HOST=prod-rabbitmq.company.com
-set RABBITMQ_USERNAME=astm_queue_user
+set RABBITMQ_VHOST=infinity-lis-prod
+set RABBITMQ_USERNAME=astm-server
 set RABBITMQ_PASSWORD=<secret>
 set SERVER_PORT=8080
 
@@ -315,20 +321,25 @@ lis:
       port: ${ORTHO_VISION_PORT:9001}
       driverClassName: com.lis.astm.server.driver.impl.OrthoVisionDriver
       enabled: ${ORTHO_VISION_ENABLED:true}
-      orderQueueName: ortho-vision.orders.queue
-      resultQueueName: ortho-vision.results.queue
-      resultsRoutingKey: result.inbound
-      exchangeName: ortho-vision-exchange
+      orderQueueName: lis.orders.instrument.astm.outbound.q
+      resultQueueName: lis.results.instrument.inbound.q
+      resultsRoutingKey: results.instrument.astm
+      qcRoutingKey: qc.instrument.astm
+      queryRoutingKey: results.instrument.astm.query
+      exchangeName: lis.inbound.x
     - name: SysmexXN
       port: ${SYSMEX_XN_PORT:5000}
       driverClassName: com.lis.astm.server.driver.impl.SysmexXnDriver
       enabled: ${SYSMEX_XN_ENABLED:false}
-      orderQueueName: sysmex-xn.orders.queue
-      resultQueueName: sysmex-xn.results.queue
-      resultsRoutingKey: result.inbound
-      exchangeName: sysmex-xn-exchange
+      orderQueueName: lis.orders.instrument.astm.outbound.q
+      resultQueueName: lis.results.instrument.inbound.q
+      resultsRoutingKey: results.instrument.astm
+      qcRoutingKey: qc.instrument.astm
+      queryRoutingKey: results.instrument.astm.query
+      exchangeName: lis.inbound.x
   messaging:
     enabled: true
+    declare-topology: false   # standard topology is provisioned by infinity-lis-rabbitmq-topology.ps1
     retry:
       max-attempts: 10
       collision-delay-minutes: 30

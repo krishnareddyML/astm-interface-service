@@ -1,7 +1,7 @@
 # Production profile.
 # All secrets MUST be provided through environment variables (no defaults here):
 #   DB_HOST, DB_NAME, DB_USERNAME, DB_PASSWORD
-#   RABBITMQ_HOST, RABBITMQ_PORT, RABBITMQ_USERNAME, RABBITMQ_PASSWORD
+#   RABBITMQ_HOST, RABBITMQ_PORT, RABBITMQ_VHOST, RABBITMQ_USERNAME, RABBITMQ_PASSWORD
 # Spring profile YAML lists are replaced, not merged, so every instrument must be fully
 # described here (name, port, driverClassName and queue settings).
 lis:
@@ -10,22 +10,29 @@ lis:
       port: ${ORTHO_VISION_PORT:9001}
       driverClassName: com.lis.astm.server.driver.impl.OrthoVisionDriver
       enabled: ${ORTHO_VISION_ENABLED:true}
-      orderQueueName: ortho-vision.orders.queue
-      resultQueueName: ortho-vision.results.queue
-      resultsRoutingKey: result.inbound
-      exchangeName: ortho-vision-exchange
+      orderQueueName: lis.orders.instrument.astm.outbound.q
+      resultQueueName: lis.results.instrument.inbound.q
+      resultsRoutingKey: results.instrument.astm
+      qcRoutingKey: qc.instrument.astm
+      queryRoutingKey: results.instrument.astm.query
+      exchangeName: lis.inbound.x
 
     - name: SysmexXN
       port: ${SYSMEX_XN_PORT:5000}
       driverClassName: com.lis.astm.server.driver.impl.SysmexXnDriver
       enabled: ${SYSMEX_XN_ENABLED:false}
-      orderQueueName: sysmex-xn.orders.queue
-      resultQueueName: sysmex-xn.results.queue
-      resultsRoutingKey: result.inbound
-      exchangeName: sysmex-xn-exchange
+      orderQueueName: lis.orders.instrument.astm.outbound.q
+      resultQueueName: lis.results.instrument.inbound.q
+      resultsRoutingKey: results.instrument.astm
+      qcRoutingKey: qc.instrument.astm
+      queryRoutingKey: results.instrument.astm.query
+      exchangeName: lis.inbound.x
 
   messaging:
     enabled: true
+    # Standard topology is provisioned by infinity-lis-rabbitmq-topology.ps1; the astm-server
+    # user has no configure permission, so the service must not declare anything.
+    declare-topology: false
     retry:
       batch-size: 20
       max-attempts: 10
@@ -56,7 +63,8 @@ spring:
   rabbitmq:
     host: ${RABBITMQ_HOST}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USERNAME}
+    virtual-host: ${RABBITMQ_VHOST:infinity-lis-prod}
+    username: ${RABBITMQ_USERNAME:astm-server}
     password: ${RABBITMQ_PASSWORD}
     connection-timeout: 60s
     requested-heartbeat: 30s
