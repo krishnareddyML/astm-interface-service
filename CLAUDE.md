@@ -37,6 +37,24 @@ plus `DB_PASSWORD` (see README). Do not commit passwords; profiles read them fro
 - `server/messaging/OrderQueueListener` -> `OrderMessageService` -> handler queue (orders in);
   `ResultQueuePublisher` (results out). Messaging is gated by `lis.messaging.enabled`.
 
+## RabbitMQ (standard Infinity LIS topology)
+
+The broker objects are provisioned by the platform script `infinity-lis-rabbitmq-topology.ps1`
+(not in this repo), never by this service: `lis.messaging.declare-topology=false` in every profile,
+and the `astm-server` broker user has no configure permission (publish `lis.inbound.x` only, consume
+`lis.orders.instrument.astm.outbound.q` only). Vhost `infinity-lis-<env>` (no leading slash).
+
+| Flow | Exchange / routing key | Queue |
+|---|---|---|
+| Patient results `RESULT` | `lis.inbound.x` / `results.instrument.astm` | `lis.results.instrument.inbound.q` (shared with HL7/Mirth: never purge) |
+| QC `QC_RESULT` | `lis.inbound.x` / `qc.instrument.astm` | `lis.qc.instrument.inbound.q` (QC must never reach patient filing) |
+| Queries `QUERY` | `lis.inbound.x` / `results.instrument.astm.query` | results queue until a query lane exists |
+| Orders in | `lis.outbound.x` / `orders.instrument.astm.worklist` | `lis.orders.instrument.astm.outbound.q` (all ASTM analyzers share it; routed by JSON `instrumentName`) |
+
+Routing per type: `InstrumentConfig.routingKeyFor` (ignores a `RETRY_` prefix). Results are marked
+PUBLISHED only after a broker confirm and no return. Invalid or unknown-instrument orders are rejected
+to the `.dlq`. Every queue is quorum with a delivery limit and DLQ.
+
 ## Conventions
 
 - Records are CR separated; the receiver normalises each record to `CR LF`. Drivers split on `\r`.
