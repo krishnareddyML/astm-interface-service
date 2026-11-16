@@ -11,6 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -21,9 +23,13 @@ public class OrderQueueListener {
     private final ASTMServer astmServer;
     private final ObjectMapper objectMapper;
 
-    // This method can be triggered by your RabbitMQ listener configuration
-    public void handleOrderMessage(byte[] messageBytes) { 
-        String message = new String(messageBytes); 
+    /** Called for messages without a text content type (body delivered as bytes). JSON is UTF-8. */
+    public void handleOrderMessage(byte[] messageBytes) {
+        handleOrderMessage(new String(messageBytes, StandardCharsets.UTF_8));
+    }
+
+    /** Called for messages published with a text/* content type (for example from the RabbitMQ web UI). */
+    public void handleOrderMessage(String message) {
         try {
             log.info("Received order message from queue: {}", message);
             

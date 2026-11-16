@@ -34,7 +34,7 @@ Instrument name used everywhere (config, JSON, queues): `SysmexXN`
 ## 2. Messages from the analyzer (published to `sysmex-xn.results.queue`)
 
 Every message the IPU sends is stored in `ASTMServerMessages`, parsed, and published as JSON
-(`AstmMessage`, snake_case) with headers `instrumentName`, `messageType`, `resultCount`, `orderCount`.
+(`AstmMessage`; property names are camelCase, dates are `yyyyMMddHHmmss` strings) with headers `instrumentName`, `messageType`, `resultCount`, `orderCount`.
 
 ### 2.1 Inquiry (`messageType = QUERY`)
 
@@ -43,78 +43,78 @@ by publishing an order response (section 3) to `sysmex-xn.orders.queue`.
 
 ```json
 {
-  "message_type": "QUERY",
-  "instrument_name": "SysmexXN",
-  "query_records": [{
-    "sequence_number": 1,
-    "starting_range_id": "2^1^            1234567890^B",
-    "rack_number": "2",
-    "rack_position": "1",
-    "sample_id": "1234567890",
-    "sample_number_attribute": "B",
-    "request_information_status_codes": "N"
+  "messageType": "QUERY",
+  "instrumentName": "SysmexXN",
+  "queryRecords": [{
+    "sequenceNumber": 1,
+    "startingRangeId": "2^1^            1234567890^B",
+    "rackNumber": "2",
+    "rackPosition": "1",
+    "sampleId": "1234567890",
+    "sampleNumberAttribute": "B",
+    "requestInformationStatusCodes": "N"
   }]
 }
 ```
 
 | Field | Meaning |
 |---|---|
-| `rack_number`, `rack_position` | Present in sampler mode and batch (work list) inquiries. Must be echoed back. |
-| `sample_id` | Trimmed sample ID (the wire value is right-aligned to 22 characters). Empty for a work-list inquiry keyed by rack/position, in which case the LIS assigns the sample ID. |
-| `sample_number_attribute` | `M` manual, `A` auto-assigned (barcode read error, ID starts with `ERR`), `B` barcode, `C` host assigned. Echo it back. |
-| `request_information_status_codes` | `F` real-time manual analysis or batch inquiry, `N` sampler initial analysis, `C` sampler rerun/reflex. |
+| `rackNumber`, `rackPosition` | Present in sampler mode and batch (work list) inquiries. Must be echoed back. |
+| `sampleId` | Trimmed sample ID (the wire value is right-aligned to 22 characters). Empty for a work-list inquiry keyed by rack/position, in which case the LIS assigns the sample ID. |
+| `sampleNumberAttribute` | `M` manual, `A` auto-assigned (barcode read error, ID starts with `ERR`), `B` barcode, `C` host assigned. Echo it back. |
+| `requestInformationStatusCodes` | `F` real-time manual analysis or batch inquiry, `N` sampler initial analysis, `C` sampler rerun/reflex. |
 
 ### 2.2 Analysis results (`messageType = RESULT`) and QC (`messageType = QC_RESULT`)
 
 ```json
 {
-  "message_type": "RESULT",
-  "patient_record": {
-    "practice_assigned_patient_id": "100",
-    "patient_name": "Brown^Jim",
-    "birth_date": [2001, 8, 20, 0, 0],
-    "patient_sex": "M",
-    "attending_physician_id": "^Dr.1",
+  "messageType": "RESULT",
+  "patientRecord": {
+    "practiceAssignedPatientId": "100",
+    "patientName": "Brown^Jim",
+    "birthDate": "20010820000000",
+    "patientSex": "M",
+    "attendingPhysicianId": "^Dr.1",
     "location": "WEST"
   },
-  "order_records": [{
-    "specimen_id": "1234567890",
-    "instrument_specimen_id": "2^1^            1234567890^B",
-    "rack_number": "2", "rack_position": "1", "sample_number_attribute": "B",
-    "universal_test_id": "^^^^WBC\\^^^^RBC\\^^^^HGB",
-    "action_code": "N",
-    "report_types": "F",
-    "section_id": ""
+  "orderRecords": [{
+    "specimenId": "1234567890",
+    "instrumentSpecimenId": "2^1^            1234567890^B",
+    "rackNumber": "2", "rackPosition": "1", "sampleNumberAttribute": "B",
+    "universalTestId": "^^^^WBC\\^^^^RBC\\^^^^HGB",
+    "actionCode": "N",
+    "reportTypes": "F",
+    "sectionId": ""
   }],
-  "result_records": [
-    { "parameter_name": "WBC", "dilution_ratio": "1", "data_value": "7.81", "units": "10*3/uL",
-      "result_abnormal_flags": "N", "result_status": "F", "result_category": "CLINICAL",
-      "date_time_test_completed": [2001, 8, 6, 12, 0] },
-    { "parameter_name": "RBC", "data_value": "----", "result_abnormal_flags": "A", "result_category": "CLINICAL" },
-    { "parameter_name": "Blasts?", "data_value": "100", "result_abnormal_flags": "A", "result_category": "IP_SUSPECT" },
-    { "parameter_name": "ACTION_MESSAGE_Delta", "result_abnormal_flags": "A", "result_category": "ACTION_MESSAGE" },
-    { "parameter_name": "SCAT_DIFF", "data_value": "PNG\\20010806\\2001_08_06_12_00_1234567890_DIFF.PNG", "result_category": "IMAGE" }
+  "resultRecords": [
+    { "parameterName": "WBC", "dilutionRatio": "1", "dataValue": "7.81", "units": "10*3/uL",
+      "resultAbnormalFlags": "N", "resultStatus": "F", "resultCategory": "CLINICAL",
+      "dateTimeTestCompleted": "20010806120000" },
+    { "parameterName": "RBC", "dataValue": "----", "resultAbnormalFlags": "A", "resultCategory": "CLINICAL" },
+    { "parameterName": "Blasts?", "dataValue": "100", "resultAbnormalFlags": "A", "resultCategory": "IP_SUSPECT" },
+    { "parameterName": "ACTION_MESSAGE_Delta", "resultAbnormalFlags": "A", "resultCategory": "ACTION_MESSAGE" },
+    { "parameterName": "SCAT_DIFF", "dataValue": "PNG\\20010806\\2001_08_06_12_00_1234567890_DIFF.PNG", "resultCategory": "IMAGE" }
   ],
-  "comment_records": [
-    { "scope": "PATIENT", "comment_text": "Patient Comments" },
-    { "scope": "ORDER", "comment_text": "Sample Comments" },
-    { "scope": "RESULT", "comment_text": "1^WBC HIGH\\23^Need to PLT-F analysis",
-      "rule_references": [ { "rule_number": "1", "rule_name": "WBC HIGH" }, { "rule_number": "23", "rule_name": "Need to PLT-F analysis" } ] }
+  "commentRecords": [
+    { "scope": "PATIENT", "commentText": "Patient Comments" },
+    { "scope": "ORDER", "commentText": "Sample Comments" },
+    { "scope": "RESULT", "commentText": "1^WBC HIGH\\23^Need to PLT-F analysis",
+      "ruleReferences": [ { "ruleNumber": "1", "ruleName": "WBC HIGH" }, { "ruleNumber": "23", "ruleName": "Need to PLT-F analysis" } ] }
   ]
 }
 ```
 
 | Field | Meaning |
 |---|---|
-| `patient_name` | Normalised to `Last^First` (the IPU sends `^First^Last`). |
-| `order_records[].action_code` | `N` initial/manual, `A` rerun or reflex, `Q` QC. |
-| `order_records[].report_types` | `F` normal, `I` repeat analysis. |
-| `result_records[].result_category` | `CLINICAL`, `QC`, `IP_ABNORMAL`, `IP_SUSPECT`, `ACTION_MESSAGE`, `JUDGEMENT`, `IMAGE`, `DISTRIBUTION`, `RESEARCH`, `SLIDE`, `OTHER`. Report only `CLINICAL` (and `QC` if wanted). |
-| `data_value` | `----` analysis or hardware error, `++++` out of range. `IP_SUSPECT` carries a Q-flag grade 0 to 300. |
-| `result_abnormal_flags` | `L` low, `H` high, `>` out of linearity, `N` normal, `A` error/flag set, `W` low reliability, `LL` / `HH` panic. |
-| `result_status` | `F` none, `I` repeat, `P` rerun or reflex, `N` query to host. |
-| `dilution_ratio` | `1` manual/sampler, `5` capillary. |
-| `comment_records[].scope` | `PATIENT`, `ORDER`, or `RESULT` (rerun/reflex rules that fired). |
+| `patientName` | Normalised to `Last^First` (the IPU sends `^First^Last`). |
+| `orderRecords[].actionCode` | `N` initial/manual, `A` rerun or reflex, `Q` QC. |
+| `orderRecords[].reportTypes` | `F` normal, `I` repeat analysis. |
+| `resultRecords[].resultCategory` | `CLINICAL`, `QC`, `IP_ABNORMAL`, `IP_SUSPECT`, `ACTION_MESSAGE`, `JUDGEMENT`, `IMAGE`, `DISTRIBUTION`, `RESEARCH`, `SLIDE`, `OTHER`. Report only `CLINICAL` (and `QC` if wanted). |
+| `dataValue` | `----` analysis or hardware error, `++++` out of range. `IP_SUSPECT` carries a Q-flag grade 0 to 300. |
+| `resultAbnormalFlags` | `L` low, `H` high, `>` out of linearity, `N` normal, `A` error/flag set, `W` low reliability, `LL` / `HH` panic. |
+| `resultStatus` | `F` none, `I` repeat, `P` rerun or reflex, `N` query to host. |
+| `dilutionRatio` | `1` manual/sampler, `5` capillary. |
+| `commentRecords[].scope` | `PATIENT`, `ORDER`, or `RESULT` (rerun/reflex rules that fired). |
 
 QC messages (`QC_RESULT`) have an empty patient record, a sample ID starting with `QC-` (real-time QC)
 or a QC file number (manual output), and every value classified `QC`. Abnormal flags are not
@@ -153,7 +153,7 @@ IPU is disconnected, busy, or did not acknowledge, up to `lis.messaging.retry.ma
 }
 ```
 
-(The orders queue uses the same `AstmMessage` model; camelCase keys are accepted on input.)
+(Same `AstmMessage` model and camelCase property names as the results; dates as `yyyyMMddHHmmss` strings.)
 
 Which produces on the wire:
 

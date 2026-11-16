@@ -46,7 +46,7 @@ Watch these specifically; they are improvements but they change bytes on the wir
    - CBC+DIFF result, result with IP flags and action message, QC result;
    - confirm which P field the IPU shows the ward from (spec table says 26, examples say 25);
    - unit and decimal settings match what the LIS expects.
-4. Simulator runs for anything the analyzers cannot easily produce (Latin-1 names, long comments):
+4. Run the full simulator runbook first (`docs/sysmex-xn-simulator-test.md`), and use the simulator for anything the analyzers cannot easily produce (Latin-1 names, long comments):
    `java -jar instrument-simulator.jar <host> 5000 sysmex-xn-test-cases.json`.
 5. Rotate the database and RabbitMQ passwords that were committed before this branch.
 

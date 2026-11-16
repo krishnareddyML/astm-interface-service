@@ -53,4 +53,5 @@ plus `DB_PASSWORD` (see README). Do not commit passwords; profiles read them fro
 - `docs/sysmex-xn-readiness-review.md` - review of the code against the Sysmex XN spec and status.
 - `docs/sysmex-xn-integration.md` - IPU settings and the LIS JSON contract for the XN.
 - `docs/staging-test-checklist.md` - what to verify on stage for each analyzer.
+- `docs/sysmex-xn-simulator-test.md` - step-by-step simulator runbook for the XN before the real analyzer.
 - `astm_message_specs.md` - ORTHO VISION record specification notes.
