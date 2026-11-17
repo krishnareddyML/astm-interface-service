@@ -47,7 +47,7 @@ public class ServerMessageRepository {
      * Save a new incoming server message
      */
     public ServerMessage save(ServerMessage serverMessage) {
-        String sql = "INSERT INTO ASTMServerMessages " +
+        String sql = "INSERT INTO AnalyzerInboundMessages " +
                 "(MessageId, InstrumentName, RawMessage, MessageType, Status, ReceivedAt, " +
                 "ProcessedAt, PublishedAt, ErrorMessage, RemoteAddress) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
@@ -79,7 +79,7 @@ public class ServerMessageRepository {
      * Update an existing server message
      */
     public void update(ServerMessage serverMessage) {
-        String sql = "UPDATE ASTMServerMessages SET " +
+        String sql = "UPDATE AnalyzerInboundMessages SET " +
                 "Status = ?, ProcessedAt = ?, PublishedAt = ?, ErrorMessage = ? " +
                 "WHERE Id = ?";
         
@@ -97,7 +97,7 @@ public class ServerMessageRepository {
      * Find message by ID
      */
     public Optional<ServerMessage> findById(Long id) {
-        String sql = "SELECT * FROM ASTMServerMessages WHERE Id = ?";
+        String sql = "SELECT * FROM AnalyzerInboundMessages WHERE Id = ?";
         try {
             ServerMessage message = jdbcTemplate.queryForObject(sql, rowMapper, id);
             return Optional.ofNullable(message);
@@ -110,7 +110,7 @@ public class ServerMessageRepository {
      * Find message by message ID
      */
     public Optional<ServerMessage> findByMessageId(String messageId) {
-        String sql = "SELECT * FROM ASTMServerMessages WHERE MessageId = ?";
+        String sql = "SELECT * FROM AnalyzerInboundMessages WHERE MessageId = ?";
         try {
             ServerMessage message = jdbcTemplate.queryForObject(sql, rowMapper, messageId);
             return Optional.ofNullable(message);
@@ -123,7 +123,7 @@ public class ServerMessageRepository {
      * Find recent messages for an instrument
      */
     public List<ServerMessage> findRecentByInstrument(String instrumentName, int limit) {
-        String sql = "SELECT TOP (?) * FROM ASTMServerMessages " +
+        String sql = "SELECT TOP (?) * FROM AnalyzerInboundMessages " +
                 "WHERE InstrumentName = ? " +
                 "ORDER BY ReceivedAt DESC";
         
@@ -134,7 +134,7 @@ public class ServerMessageRepository {
      * Find messages by status
      */
     public List<ServerMessage> findByStatus(ServerMessage.Status status, int limit) {
-        String sql = "SELECT TOP (?) * FROM ASTMServerMessages " +
+        String sql = "SELECT TOP (?) * FROM AnalyzerInboundMessages " +
                 "WHERE Status = ? " +
                 "ORDER BY ReceivedAt DESC";
         
@@ -145,7 +145,7 @@ public class ServerMessageRepository {
      * Get statistics for monitoring
      */
     public ServerMessageStats getStats() {
-        String sql = "SELECT Status, COUNT(*) as count FROM ASTMServerMessages GROUP BY Status";
+        String sql = "SELECT Status, COUNT(*) as count FROM AnalyzerInboundMessages GROUP BY Status";
         
         ServerMessageStats stats = new ServerMessageStats();
         
@@ -176,7 +176,7 @@ public class ServerMessageRepository {
      * Clean up old messages (for maintenance)
      */
     public int cleanupOldMessages(int daysOld) {
-        String sql = "DELETE FROM ASTMServerMessages " +
+        String sql = "DELETE FROM AnalyzerInboundMessages " +
                 "WHERE Status = 'PUBLISHED' " +
                 "AND PublishedAt < DATEADD(day, -?, GETDATE())";
         

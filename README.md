@@ -196,11 +196,11 @@ mvn exec:exec
 #### Database Setup (Development)
 ```sql
 -- Create database
-CREATE DATABASE [ASTM_Interface_Dev]
+CREATE DATABASE [infinity-lis-astm-dev]
 GO
 
--- Create tables (auto-created by application)
-USE [ASTM_Interface_Dev]
+-- Create tables: run astm-server/src/main/resources/db/astm-schema.sql (not auto-created)
+USE [infinity-lis-astm-dev]
 GO
 ```
 
@@ -288,8 +288,8 @@ mvn spring-boot:repackage
 # Required production environment variables (no defaults exist in application-prod.yml)
 set SPRING_PROFILES_ACTIVE=prod
 set DB_HOST=prod-sql-server.company.com
-set DB_NAME=ASTM_Interface_Prod
-set DB_USERNAME=astm_service_user
+set DB_NAME=infinity-lis-astm-prod
+set DB_USERNAME=astm-server
 set DB_PASSWORD=<secret>
 set RABBITMQ_HOST=prod-rabbitmq.company.com
 set RABBITMQ_VHOST=infinity-lis-prod
@@ -310,7 +310,7 @@ set LOG_PATH=D:\astm-interface-services-data\logs
 # astm-server/src/main/resources/application-prod.yml
 spring:
   datasource:
-    url: jdbc:sqlserver://${DB_HOST}:1433;databaseName=ASTM_Interface_Prod;encrypt=true
+    url: jdbc:sqlserver://${DB_HOST}:1433;databaseName=infinity-lis-astm-prod;encrypt=true
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     hikari:
@@ -467,66 +467,48 @@ set DB_PASSWORD=your_password
 
 ### SQL Server Setup
 
+The service has its **own database**, separate from the Core LIS databases. Only astm-server
+uses it; the Core LIS gets everything through RabbitMQ.
+
+| Profile | Database (default, override with `DB_NAME`) |
+|---|---|
+| local, dev | `infinity-lis-astm-dev` |
+| staging | `infinity-lis-astm-stage` |
+| prod | `infinity-lis-astm-prod` |
+
 #### 1. Database Creation
 ```sql
--- Create database
-CREATE DATABASE [ASTM_Interface_Prod]
-ON (
-    NAME = 'ASTM_Interface_Data',
-    FILENAME = 'C:\ASTM_Data\ASTM_Interface_Prod.mdf',
-    SIZE = 500MB,
-    MAXSIZE = 10GB,
-    FILEGROWTH = 50MB
-)
-LOG ON (
-    NAME = 'ASTM_Interface_Log',  
-    FILENAME = 'C:\ASTM_Data\ASTM_Interface_Prod_Log.ldf',
-    SIZE = 100MB,
-    MAXSIZE = 2GB,
-    FILEGROWTH = 10MB
-)
-GO
+CREATE DATABASE [infinity-lis-astm-dev];   -- name per environment, see the table above
 ```
 
-#### 2. Service Account Setup
-```sql
--- Create service login and user
-USE [master]
-GO
-CREATE LOGIN [astm_service_user] WITH PASSWORD = 'SecurePassword123!', 
-    DEFAULT_DATABASE = [ASTM_Interface_Prod],
-    CHECK_EXPIRATION = OFF,
-    CHECK_POLICY = OFF
-GO
+#### 2. Tables
+The application does **not** create tables. Run the schema script once in the new database
+(safe to run again):
 
-USE [ASTM_Interface_Prod]  
-GO
-CREATE USER [astm_service_user] FOR LOGIN [astm_service_user]
-GO
-ALTER ROLE [db_datareader] ADD MEMBER [astm_service_user]
-ALTER ROLE [db_datawriter] ADD MEMBER [astm_service_user]
-ALTER ROLE [db_ddladmin] ADD MEMBER [astm_service_user]
-GO
+```powershell
+sqlcmd -S 192.168.20.123 -d infinity-lis-astm-dev -i astm-server\src\main\resources\db\astm-schema.sql
 ```
 
-#### 3. Tables (Auto-created by Application)
-The application automatically creates these tables:
-```sql
--- ASTMServerMessages - Incoming messages from instruments  
--- ASTMOrderMessages - Outgoing orders to instruments
--- (Schema managed by Spring Boot + JDBC)
-```
+| Table | Holds |
+|---|---|
+| `AnalyzerInboundMessages` | Every message an analyzer sends (results, QC, queries): raw text, parse outcome, publish status (formerly `ASTMServerMessages`) |
+| `AnalyzerOutboundOrders` | Every order from the Core LIS for an analyzer, until delivered or given up (formerly `ASTMOrderMessages`) |
+
+#### 3. Service Account (optional, recommended)
+The script's commented "OPTIONAL 1" section creates a login with `db_datareader` and
+`db_datawriter` on the ASTM database only (no DDL rights, no access to Core LIS databases).
+"OPTIONAL 2" copies history from the old tables in the Core LIS database.
 
 #### 4. Connection String Examples
 ```yaml
 # Local Development
-spring.datasource.url: jdbc:sqlserver://localhost:1433;databaseName=ASTM_Interface_Dev;trustServerCertificate=true
+spring.datasource.url: jdbc:sqlserver://localhost:1433;databaseName=infinity-lis-astm-dev;trustServerCertificate=true
 
 # Production (with encryption)
-spring.datasource.url: jdbc:sqlserver://prod-sql.company.com:1433;databaseName=ASTM_Interface_Prod;encrypt=true;trustServerCertificate=false
+spring.datasource.url: jdbc:sqlserver://prod-sql.company.com:1433;databaseName=infinity-lis-astm-prod;encrypt=true;trustServerCertificate=false
 
 # Production (Azure SQL)  
-spring.datasource.url: jdbc:sqlserver://astm-sql-server.database.windows.net:1433;databaseName=ASTM_Interface_Prod;encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30
+spring.datasource.url: jdbc:sqlserver://astm-sql-server.database.windows.net:1433;databaseName=infinity-lis-astm-prod;encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30
 ```
 
 ## 🧪 Testing & Validation
@@ -651,12 +633,12 @@ logging:
 ```sql
 -- Monitor message processing
 SELECT Status, COUNT(*) as Count, MAX(ReceivedAt) as LastReceived
-FROM ASTMServerMessages 
+FROM AnalyzerInboundMessages 
 GROUP BY Status;
 
 -- Monitor order queue
 SELECT Status, COUNT(*) as Count, MAX(CreatedAt) as LastCreated  
-FROM ASTMOrderMessages
+FROM AnalyzerOutboundOrders
 GROUP BY Status;
 
 -- Performance monitoring
@@ -664,7 +646,7 @@ SELECT
     InstrumentName,
     COUNT(*) as MessageCount,
     AVG(DATEDIFF(ms, ReceivedAt, ProcessedAt)) as AvgProcessingTimeMs
-FROM ASTMServerMessages 
+FROM AnalyzerInboundMessages 
 WHERE ProcessedAt IS NOT NULL
     AND ReceivedAt > DATEADD(hour, -24, GETDATE())
 GROUP BY InstrumentName;
@@ -705,15 +687,15 @@ java -Xmx2g ^
 ```sql
 -- Index recommendations
 CREATE INDEX IX_ServerMessages_Status_ReceivedAt 
-ON ASTMServerMessages(Status, ReceivedAt);
+ON AnalyzerInboundMessages(Status, ReceivedAt);
 
 CREATE INDEX IX_OrderMessages_Status_NextRetryAt
-ON ASTMOrderMessages(Status, NextRetryAt)  
+ON AnalyzerOutboundOrders(Status, NextRetryAt)  
 WHERE Status IN ('PENDING', 'FAILED');
 
 -- Maintenance tasks
 -- Clean old successful messages (run weekly)
-DELETE FROM ASTMServerMessages 
+DELETE FROM AnalyzerInboundMessages 
 WHERE Status = 'PUBLISHED' 
   AND PublishedAt < DATEADD(day, -30, GETDATE());
 ```
@@ -754,7 +736,7 @@ type D:\Applications\ASTM-Interface\logs\service-err.log
 #### 2. Database Connection Issues
 ```powershell
 # Test connection string
-sqlcmd -S server -d ASTM_Interface_Prod -U astm_service_user -P password
+sqlcmd -S server -d infinity-lis-astm-prod -U astm-server -P <password>
 
 # Check firewall settings  
 Test-NetConnection -ComputerName sql-server -Port 1433

@@ -20,7 +20,17 @@ The deeper single-topic documents in `docs/` must agree with the page.
 
 - `astm-model` - shared record model (`AstmMessage`, H/P/O/R/Q/C/M/L records), Jackson JSON, no Spring.
 - `astm-server` - the deployable. TCP listener per instrument, protocol state machine, instrument
-  drivers, SQL Server persistence (`ASTMServerMessages`, `ASTMOrderMessages`), RabbitMQ in/out.
+  drivers, SQL Server persistence (`AnalyzerInboundMessages`, `AnalyzerOutboundOrders`), RabbitMQ in/out.
+
+## Database (own ASTM database, not shared with Core LIS)
+
+SQL Server database `infinity-lis-astm-<env>` (`-dev` for local and dev, `-stage`, `-prod`; override
+with `DB_NAME`). Only this service uses it. Tables: `AnalyzerInboundMessages` (everything analyzers
+send) and `AnalyzerOutboundOrders` (orders waiting for an analyzer); formerly `ASTMServerMessages` /
+`ASTMOrderMessages` in the Core LIS database. The app never creates tables: the schema lives in
+`astm-server/src/main/resources/db/astm-schema.sql`. A column or table change updates that script and
+`docs/architecture.html` in the same commit; `SchemaScriptTest` fails the build when the script and the
+repositories disagree.
 - `instrument-simulator` - CLI that plays an analyzer against the server from JSON test cases.
 - `astm-parser-swing` - desktop GUI to inspect raw ASTM messages.
 

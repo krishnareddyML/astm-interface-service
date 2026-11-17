@@ -87,7 +87,7 @@ public class ServerMessageRetryService {
     }
 
     /**
-     * The parsed JSON is not stored in the database (ASTMServerMessages has no column for it), so
+     * The parsed JSON is not stored in the database (AnalyzerInboundMessages has no column for it), so
      * a message read back for retry is rebuilt by parsing its RawMessage again with the
      * instrument's driver. Parsing is deterministic, so the result equals the first attempt.
      */

@@ -13,8 +13,8 @@ Commands are PowerShell, run from the repository root.
 - JDK 17, 21 or 25 (the build is verified on 21 and 25; output runs on Java 8+) and Maven 3.6+.
 - Network access from this machine to SQL Server and RabbitMQ (the `local` profile defaults are  `192.168.20.123:1433` and `192.168.20.254:5672`, vhost `infinity-lis-dev`; override with the variables in step 2).
 - RabbitMQ management UI, normally `http://<rabbitmq-host>:15672`, with a login that can publish.
-- SQL Server tables `ASTMServerMessages` and `ASTMOrderMessages` already exist (they do wherever
-  ORTHO VISION has run).
+- The ASTM database `infinity-lis-astm-dev` exists on SQL Server with its two tables
+  (`AnalyzerInboundMessages`, `AnalyzerOutboundOrders`): run `astm-server/src/main/resources/db/astm-schema.sql` in it once.
 - Ports 5000 (Sysmex XN) and 9001 (ORTHO VISION) free on this machine.
 
 ## 1. Build
@@ -36,7 +36,7 @@ Artifacts:
 $env:DB_PASSWORD = "<database password>"
 $env:RABBITMQ_PASSWORD = "<password of the astm-server RabbitMQ user>"
 # only if they differ from the profile defaults:
-# $env:DB_HOST = "192.168.20.123"; $env:DB_NAME = "infinity-lis-shard-1"; $env:DB_USERNAME = "medsa"
+# $env:DB_HOST = "192.168.20.123"; $env:DB_NAME = "infinity-lis-astm-dev"; $env:DB_USERNAME = "medsa"
 # $env:RABBITMQ_HOST = "192.168.20.254"; $env:RABBITMQ_VHOST = "infinity-lis-dev"; $env:RABBITMQ_USERNAME = "astm-server"
 ```
 
@@ -100,7 +100,7 @@ How to inspect the database:
 
 ```sql
 SELECT TOP 10 Id, InstrumentName, MessageType, Status, ReceivedAt, ErrorMessage
-FROM ASTMServerMessages WHERE InstrumentName = 'SysmexXN' ORDER BY Id DESC;
+FROM AnalyzerInboundMessages WHERE InstrumentName = 'SysmexXN' ORDER BY Id DESC;
 ```
 
 ### 5.1 Full analysis result (menu 4)
@@ -179,7 +179,7 @@ This is the most important test: it is what the analyzer does for every barcoded
 
    ```sql
    SELECT TOP 10 Id, InstrumentName, Status, RetryCount, NextRetryAt, ErrorMessage
-   FROM ASTMOrderMessages WHERE InstrumentName = 'SysmexXN' ORDER BY Id DESC;
+   FROM AnalyzerOutboundOrders WHERE InstrumentName = 'SysmexXN' ORDER BY Id DESC;
    ```
 
    Newest row `Status = SUCCESS`.

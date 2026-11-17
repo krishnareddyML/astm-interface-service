@@ -15,7 +15,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * A message whose first publish failed is read back from ASTMServerMessages without parsed JSON
+ * A message whose first publish failed is read back from AnalyzerInboundMessages without parsed JSON
  * (there is no column for it). The retry job must rebuild it from RawMessage, keep its QC type,
  * and republish it, instead of marking it ERROR.
  */

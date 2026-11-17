@@ -48,7 +48,7 @@ public class OrderMessageRepository {
      * Save a new order message
      */
     public OrderMessage save(OrderMessage orderMessage) {
-        String sql = "INSERT INTO ASTMOrderMessages " +
+        String sql = "INSERT INTO AnalyzerOutboundOrders " +
                 "(MessageId, InstrumentName, MessageContent, Status, RetryCount, MaxRetryAttempts, " +
                 "CreatedAt, UpdatedAt, LastRetryAt, NextRetryAt, ErrorMessage) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
@@ -81,7 +81,7 @@ public class OrderMessageRepository {
      * Update an existing order message
      */
     public void update(OrderMessage orderMessage) {
-        String sql = "UPDATE ASTMOrderMessages SET " +
+        String sql = "UPDATE AnalyzerOutboundOrders SET " +
                 "Status = ?, RetryCount = ?, UpdatedAt = ?, " +
                 "LastRetryAt = ?, NextRetryAt = ?, ErrorMessage = ? " +
                 "WHERE Id = ?";
@@ -102,7 +102,7 @@ public class OrderMessageRepository {
      * Find message by ID
      */
     public Optional<OrderMessage> findById(Long id) {
-        String sql = "SELECT * FROM ASTMOrderMessages WHERE Id = ?";
+        String sql = "SELECT * FROM AnalyzerOutboundOrders WHERE Id = ?";
         try {
             OrderMessage message = jdbcTemplate.queryForObject(sql, rowMapper, id);
             return Optional.ofNullable(message);
@@ -115,7 +115,7 @@ public class OrderMessageRepository {
      * Find message by message ID
      */
     public Optional<OrderMessage> findByMessageId(String messageId) {
-        String sql = "SELECT * FROM ASTMOrderMessages WHERE MessageId = ?";
+        String sql = "SELECT * FROM AnalyzerOutboundOrders WHERE MessageId = ?";
         try {
             OrderMessage message = jdbcTemplate.queryForObject(sql, rowMapper, messageId);
             return Optional.ofNullable(message);
@@ -129,7 +129,7 @@ public class OrderMessageRepository {
      * Returns PENDING messages where NextRetryAt is null or in the past
      */
     public List<OrderMessage> findMessagesReadyForRetry(int limit) {
-        String sql = "SELECT TOP (?) * FROM ASTMOrderMessages " +
+        String sql = "SELECT TOP (?) * FROM AnalyzerOutboundOrders " +
                 "WHERE Status = 'PENDING' " +
                 "AND RetryCount <= MaxRetryAttempts " +
                 "AND (NextRetryAt IS NULL OR NextRetryAt <= GETDATE()) " +
@@ -142,7 +142,7 @@ public class OrderMessageRepository {
      * Find pending messages for a specific instrument
      */
     public List<OrderMessage> findPendingByInstrument(String instrumentName) {
-        String sql = "SELECT * FROM ASTMOrderMessages " +
+        String sql = "SELECT * FROM AnalyzerOutboundOrders " +
                 "WHERE InstrumentName = ? " +
                 "AND Status IN ('PENDING', 'PROCESSING') " +
                 "ORDER BY CreatedAt ASC";
@@ -154,7 +154,7 @@ public class OrderMessageRepository {
      * Mark message as processing (atomic operation to prevent concurrent processing)
      */
     public boolean markAsProcessing(Long id) {
-        String sql = "UPDATE ASTMOrderMessages " +
+        String sql = "UPDATE AnalyzerOutboundOrders " +
                 "SET Status = 'PROCESSING', UpdatedAt = GETDATE() " +
                 "WHERE Id = ? AND Status = 'PENDING'";
         
@@ -166,7 +166,7 @@ public class OrderMessageRepository {
      * Get statistics for monitoring
      */
     public OrderMessageStats getStats() {
-        String sql = "SELECT Status, COUNT(*) as count FROM ASTMOrderMessages GROUP BY Status";
+        String sql = "SELECT Status, COUNT(*) as count FROM AnalyzerOutboundOrders GROUP BY Status";
         
         OrderMessageStats stats = new OrderMessageStats();
         
@@ -197,7 +197,7 @@ public class OrderMessageRepository {
      * Clean up old successful messages (optional - for maintenance)
      */
     public int cleanupOldSuccessfulMessages(int daysOld) {
-        String sql = "DELETE FROM ASTMOrderMessages " +
+        String sql = "DELETE FROM AnalyzerOutboundOrders " +
                 "WHERE Status = 'SUCCESS' " +
                 "AND UpdatedAt < DATEADD(day, -?, GETDATE())";
         

@@ -27,7 +27,7 @@ Watch these specifically; they are improvements but they change bytes on the wir
 |---|---|
 | Built records no longer end with an extra `\|` | Analyzer accepts orders (it did with the extra delimiter; standard output should be fine). |
 | ETB continuation frames no longer carry a CR | Only matters if the LIS sends records longer than one frame; the server does not split by default. |
-| Orders now end as SUCCESS / PENDING(retry) / FAILED | `ASTMOrderMessages.Status` moves off PROCESSING after a send. |
+| Orders now end as SUCCESS / PENDING(retry) / FAILED | `AnalyzerOutboundOrders.Status` moves off PROCESSING after a send. |
 | A reconnecting analyzer replaces the old session | Power-cycle the analyzer (or pull the cable) and confirm it reconnects without restarting the service. |
 | Outbound orders go out within ~0.5 s of queueing | Query to order round-trip time in the logs. |
 | Extended characters (accents) accepted | Send a patient with an accented name; no NAK loop. |

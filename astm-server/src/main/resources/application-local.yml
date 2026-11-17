@@ -42,7 +42,7 @@ log_path: ${LOG_PATH:D:/astm-interface-services-data/logs}
 
 spring:
   datasource:
-    url: jdbc:sqlserver://${DB_HOST:192.168.20.123}:1433;databaseName=${DB_NAME:infinity-lis-shard-1};trustServerCertificate=true
+    url: jdbc:sqlserver://${DB_HOST:192.168.20.123}:1433;databaseName=${DB_NAME:infinity-lis-astm-dev};trustServerCertificate=true
     username: ${DB_USERNAME:medsa}
     password: ${DB_PASSWORD}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver

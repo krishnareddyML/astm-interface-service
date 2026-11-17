@@ -42,7 +42,7 @@ Instrument name used everywhere (config, JSON, queues): `SysmexXN`
 A republished message (after a broker outage) has the type prefixed with `RETRY_` (for example
 `RETRY_QC_RESULT`) and takes the same route.
 
-Every message the IPU sends is stored in `ASTMServerMessages`, parsed, and published as JSON
+Every message the IPU sends is stored in `AnalyzerInboundMessages`, parsed, and published as JSON
 (`AstmMessage`; property names are camelCase, dates are `yyyyMMddHHmmss` strings) with headers `instrumentName`, `messageType`, `resultCount`, `orderCount`.
 
 ### 2.1 Inquiry (`messageType = QUERY`)
@@ -133,7 +133,7 @@ sent for QC data.
 
 ## 3. Order response from the LIS (consumed from `lis.orders.instrument.astm.outbound.q`)
 
-Publish one message per inquiry. The service persists it in `ASTMOrderMessages`, sends it on
+Publish one message per inquiry. The service persists it in `AnalyzerOutboundOrders`, sends it on
 the open session, and marks it `SUCCESS`, or retries it (`PENDING` with `NextRetryAt`) when the
 IPU is disconnected, busy, or did not acknowledge, up to `lis.messaging.retry.max-attempts`.
 
