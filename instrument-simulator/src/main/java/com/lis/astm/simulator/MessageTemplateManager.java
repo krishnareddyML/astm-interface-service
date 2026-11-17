@@ -5,39 +5,46 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * A utility class for loading dynamic test cases from a JSON configuration file.
- * This replaces the old file-based template system with a more flexible JSON approach.
+ * Loads simulator test cases from a JSON array of {@link TestCase}.
+ *
+ * <p>The source can be a bundled resource name (for example {@code ortho-vision-test-cases.json}
+ * or {@code sysmex-xn-test-cases.json}) or a path to a file on disk, so site-specific captures can
+ * be replayed without rebuilding the simulator.
  */
 public class MessageTemplateManager {
-    
-    // The path to the JSON configuration within the classpath.
-   // private static final String TEST_CASES_RESOURCE_PATH = "/test-cases.json";
-    
-   private static final String TEST_CASES_RESOURCE_PATH = "/ortho-vision-test-cases.json";
-    
-    /**
-     * Loads the list of test cases from the test-cases.json file in the resources.
-     * @return A list of TestCase objects, or an empty list if the file cannot be loaded.
-     */
+
+    public static final String DEFAULT_TEST_CASES = "ortho-vision-test-cases.json";
+
     public static List<TestCase> loadTestCases() {
+        return loadTestCases(DEFAULT_TEST_CASES);
+    }
+
+    public static List<TestCase> loadTestCases(String source) {
         ObjectMapper objectMapper = new ObjectMapper();
-        
-        try (InputStream is = MessageTemplateManager.class.getResourceAsStream(TEST_CASES_RESOURCE_PATH)) {
-            
-            if (is == null) {
-                System.err.println("FATAL ERROR: Could not find 'test-cases.json' in the resources folder.");
-                return Collections.emptyList();
+        Path file = Paths.get(source);
+        try {
+            if (Files.isRegularFile(file)) {
+                try (InputStream is = Files.newInputStream(file)) {
+                    return objectMapper.readValue(is, new TypeReference<List<TestCase>>() {});
+                }
             }
-            
-            // Use Jackson ObjectMapper to parse the JSON array into a List of TestCase objects.
-            return objectMapper.readValue(is, new TypeReference<List<TestCase>>(){});
-            
+            String resource = source.startsWith("/") ? source : "/" + source;
+            try (InputStream is = MessageTemplateManager.class.getResourceAsStream(resource)) {
+                if (is == null) {
+                    System.err.println("FATAL ERROR: test case source '" + source + "' is neither a file nor a bundled resource.");
+                    return Collections.emptyList();
+                }
+                return objectMapper.readValue(is, new TypeReference<List<TestCase>>() {});
+            }
         } catch (IOException e) {
-            System.err.println("Error loading or parsing 'test-cases.json': " + e.getMessage());
+            System.err.println("Error loading or parsing '" + source + "': " + e.getMessage());
             return Collections.emptyList();
         }
     }

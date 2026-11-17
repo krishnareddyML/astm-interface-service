@@ -1,0 +1,30 @@
+{
+  "instrumentName": "SysmexXN",
+  "messageType": "ORDER",
+  "patientRecord": {
+    "sequenceNumber": 1,
+    "practiceAssignedPatientId": "100",
+    "patientName": "Brown^Jim",
+    "birthDate": "20010820000000",
+    "patientSex": "M",
+    "attendingPhysicianId": "Dr.1",
+    "location": "WEST"
+  },
+  "commentRecords": [
+    { "scope": "PATIENT", "commentText": "Patient Comments" },
+    { "scope": "ORDER", "commentText": "Sample Comments" }
+  ],
+  "orderRecords": [
+    {
+      "sequenceNumber": 1,
+      "rackNumber": "2",
+      "rackPosition": "1",
+      "specimenId": "1234567890",
+      "sampleNumberAttribute": "B",
+      "universalTestId": "WBC\\RBC\\HGB\\HCT\\MCV\\MCH\\MCHC\\PLT\\NEUT%\\LYMPH%\\MONO%\\EO%\\BASO%\\NEUT#\\LYMPH#\\MONO#\\EO#\\BASO#\\RDW-SD\\RDW-CV\\MPV\\RET%\\RET#\\IRF",
+      "requestedDateTime": "20010807101000",
+      "actionCode": "N",
+      "reportTypes": "Q"
+    }
+  ]
+}

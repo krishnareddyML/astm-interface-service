@@ -49,6 +49,10 @@ public class AstmMessage {
     // @Builder.Default
     // private List<MResultRecord> mResultRecords = new ArrayList<>();
     
+    @JsonProperty("commentRecords")
+    @Builder.Default
+    private List<CommentRecord> commentRecords = new ArrayList<>();
+
     @JsonProperty("terminatorRecord")
     private TerminatorRecord terminatorRecord;
     
@@ -90,6 +94,15 @@ public class AstmMessage {
     //     this.mResultRecords.add(mResultRecord);
     // }
     
+    public void addCommentRecord(CommentRecord commentRecord) {
+        if (commentRecords == null) commentRecords = new ArrayList<>();
+        commentRecords.add(commentRecord);
+    }
+
+    public boolean hasComments() {
+        return commentRecords != null && !commentRecords.isEmpty();
+    }
+
     public boolean hasResults() {
         return resultRecords != null && !resultRecords.isEmpty();
     }

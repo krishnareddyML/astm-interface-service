@@ -10,8 +10,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.MessagePostProcessor;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
+
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Service for publishing ASTM result messages to a message queue (e.g., RabbitMQ).
@@ -21,6 +26,8 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @RequiredArgsConstructor
 public class ResultQueuePublisher {
+
+    private static final long CONFIRM_TIMEOUT_SECONDS = 10;
 
     private final RabbitTemplate rabbitTemplate;
     private final AppConfig appConfig;
@@ -55,20 +62,21 @@ public class ResultQueuePublisher {
             MessagePostProcessor postProcessor = createHeaderPostProcessor(astmMessage);
 
             String exchangeName = instrumentConfig.getExchangeName();
-            String routingKey = instrumentConfig.getResultsRoutingKey();
-            
+            String routingKey = instrumentConfig.routingKeyFor(astmMessage.getMessageType());
 
-            // Prefer sending to an exchange if configured, as it's more flexible.
-            if (exchangeName != null && !exchangeName.isEmpty() && routingKey != null) {
-                log.debug("Publishing message to exchange '{}' with routing key '{}' for instrument '{}'.",
-                        exchangeName, routingKey, astmMessage.getInstrumentName());
-                rabbitTemplate.convertAndSend(exchangeName, routingKey, messageJson, postProcessor);
-            } else {
-                log.error("No valid exchange/routing key or queue name configured for instrument '{}'.", astmMessage.getInstrumentName());
+            if (exchangeName == null || exchangeName.isEmpty() || routingKey == null || routingKey.isEmpty()) {
+                log.error("No valid exchange/routing key configured for instrument '{}'.", astmMessage.getInstrumentName());
                 return;
             }
 
-            log.info("Successfully published result from instrument '{}' to message queue.", astmMessage.getInstrumentName());
+            log.debug("Publishing {} to exchange '{}' with routing key '{}' for instrument '{}'.",
+                    astmMessage.getMessageType(), exchangeName, routingKey, astmMessage.getInstrumentName());
+            CorrelationData correlation = new CorrelationData(String.valueOf(messageId) + "-" + System.nanoTime());
+            rabbitTemplate.convertAndSend(exchangeName, routingKey, messageJson, postProcessor, correlation);
+            awaitBrokerConfirm(correlation, exchangeName, routingKey);
+
+            log.info("Published {} from instrument '{}' to '{}' with routing key '{}'.",
+                    astmMessage.getMessageType(), astmMessage.getInstrumentName(), exchangeName, routingKey);
             serverMessageService.markAsPublished(messageId);
 
         } catch (JsonProcessingException e) {
@@ -82,6 +90,30 @@ public class ResultQueuePublisher {
             // Let the caller (e.g., ServerMessageRetryService) handle this exception.
             serverMessageService.markForRetryPublishing(messageId, e.getMessage());
             throw e;
+        }
+    }
+
+    /**
+     * Waits until the broker has taken responsibility for the message. Without this a message the
+     * broker refuses (queue full with reject-publish) or cannot route (no binding for the key) would
+     * be marked PUBLISHED and lost. Any failure is thrown as AmqpException so the retry job resends.
+     */
+    private void awaitBrokerConfirm(CorrelationData correlation, String exchangeName, String routingKey) {
+        CorrelationData.Confirm confirm;
+        try {
+            confirm = correlation.getFuture().get(CONFIRM_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AmqpException("Interrupted while waiting for broker confirm", e);
+        } catch (ExecutionException | TimeoutException e) {
+            throw new AmqpException("No broker confirm within " + CONFIRM_TIMEOUT_SECONDS + " s", e);
+        }
+        if (!confirm.isAck()) {
+            throw new AmqpException("Broker refused the message: " + confirm.getReason());
+        }
+        if (correlation.getReturned() != null) {
+            throw new AmqpException("Message unroutable: no queue bound to exchange '" + exchangeName
+                    + "' for routing key '" + routingKey + "' (" + correlation.getReturned().getReplyText() + ")");
         }
     }
 
