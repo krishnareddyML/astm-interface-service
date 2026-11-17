@@ -602,7 +602,7 @@ footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line);
   </div>
   <div class="callout warn">
     <strong>Fixed 2026-11-16: retry lost results</strong>
-    <p>The parsed JSON was never stored (no column for it), so every <code>PUBLISH_RETRY</code> row read back by the retry job was marked <code>ERROR</code> instead of resent. The retry job now re-parses <code>RawMessage</code> with the instrument's driver and keeps the original type (a QC message republishes as <code>RETRY_QC_RESULT</code> to the QC lane).</p>
+    <p>The parsed JSON was never stored (the repository does not write the <code>ParsedJsonMessage</code> column), so every <code>PUBLISH_RETRY</code> row read back by the retry job was marked <code>ERROR</code> instead of resent. The retry job now re-parses <code>RawMessage</code> with the instrument's driver and keeps the original type (a QC message republishes as <code>RETRY_QC_RESULT</code> to the QC lane).</p>
   </div>
 </section>
 
@@ -634,13 +634,13 @@ footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line);
   <p class="sub">SQL Server, in the service's own database, separate from the Core LIS databases: <code>infinity-lis-astm-dev</code> (local, dev), <code>infinity-lis-astm-stage</code>, <code>infinity-lis-astm-prod</code> (override with <code>DB_NAME</code>). Plain JDBC; only this service reads or writes these tables. Table names state the direction relative to the LIS, as the RabbitMQ names do (<code>lis.inbound.x</code>, <code>lis.outbound.x</code>).</p>
   <ul>
     <li><strong>Create once per environment:</strong> run <code>astm-server/src/main/resources/db/astm-schema.sql</code> in the new database (safe to run again). The application never creates tables. The script also has optional, commented sections for a least-privilege login (<code>db_datareader</code> + <code>db_datawriter</code> on this database only) and for copying history from the old tables.</li>
-    <li><strong>Renamed 2026-11-17:</strong> <code>ASTMServerMessages</code> → <code>AnalyzerInboundMessages</code>, <code>ASTMOrderMessages</code> → <code>AnalyzerOutboundOrders</code>; same columns. The old tables in the Core LIS database (<code>infinity-lis-shard-1</code>, <code>infinity-lis-staging</code>) are no longer used.</li>
+    <li><strong>Renamed 2026-11-17:</strong> <code>ASTMServerMessages</code> → <code>AnalyzerInboundMessages</code>, <code>ASTMOrderMessages</code> → <code>AnalyzerOutboundOrders</code>; same columns, types and defaults as the original tables (<code>varchar</code>, <code>datetime</code>), plus indexes for the retry and cleanup queries. The old tables in the Core LIS database (<code>infinity-lis-shard-1</code>, <code>infinity-lis-staging</code>) are no longer used.</li>
     <li><code>SchemaScriptTest</code> fails the build when a table, column or status used by the repositories is missing from the script.</li>
   </ul>
   <div class="grid2">
     <div class="card"><h4><code>AnalyzerInboundMessages</code></h4>
       <p>Every message received from an analyzer (except keep-alives). Audit trail and publish retry list.</p>
-      <p class="mono" style="font-size:12.5px">Id, MessageId, InstrumentName, RawMessage, MessageType, Status, ReceivedAt, ProcessedAt, PublishedAt, ErrorMessage, RemoteAddress</p>
+      <p class="mono" style="font-size:12.5px">Id, MessageId, InstrumentName, RawMessage, ParsedJsonMessage (unused), MessageType, Status, ReceivedAt, ProcessedAt, PublishedAt, ErrorMessage, RemoteAddress</p>
       <p>Status: <code>RECEIVED</code>, <code>PROCESSED</code>, <code>PUBLISHED</code>, <code>PUBLISH_RETRY</code>, <code>ERROR</code></p></div>
     <div class="card"><h4><code>AnalyzerOutboundOrders</code></h4>
       <p>Every order consumed from RabbitMQ, until it is delivered or given up.</p>

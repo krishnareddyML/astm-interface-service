@@ -13,6 +13,11 @@
     sqlcmd -S <server> -d infinity-lis-astm-dev -i astm-schema.sql
   The application never creates or alters tables itself.
 
+  Column types and defaults are those of the original tables ASTMServerMessages and
+  ASTMOrderMessages (scripted from the Core LIS database), under the new names:
+    ASTMServerMessages -> AnalyzerInboundMessages
+    ASTMOrderMessages  -> AnalyzerOutboundOrders
+
   Tables (direction is relative to the LIS, as in the RabbitMQ names lis.inbound.x / lis.outbound.x):
     AnalyzerInboundMessages  every message an analyzer sends (results, QC, queries): raw text,
                              parse outcome and whether it was published to RabbitMQ.
@@ -32,22 +37,25 @@ GO
 IF OBJECT_ID(N'dbo.AnalyzerInboundMessages', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.AnalyzerInboundMessages (
-        Id             BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_AnalyzerInboundMessages PRIMARY KEY,
-        MessageId      NVARCHAR(64)   NOT NULL,   -- UUID assigned on receipt
-        InstrumentName NVARCHAR(100)  NOT NULL,   -- lis.instruments[].name
-        RawMessage     NVARCHAR(MAX)  NOT NULL,   -- records as received, CR LF separated
-        MessageType    NVARCHAR(50)   NULL,       -- RESULT, QC_RESULT, QUERY, KEEP_ALIVE ...
-        Status         NVARCHAR(20)   NOT NULL,
-        ReceivedAt     DATETIME2(3)   NOT NULL,
-        ProcessedAt    DATETIME2(3)   NULL,
-        PublishedAt    DATETIME2(3)   NULL,
-        ErrorMessage   NVARCHAR(MAX)  NULL,
-        RemoteAddress  NVARCHAR(100)  NULL,       -- analyzer IP:port
-        CONSTRAINT UQ_AnalyzerInboundMessages_MessageId UNIQUE (MessageId),
+        Id                BIGINT IDENTITY(1,1) NOT NULL,
+        MessageId         VARCHAR(255)  NOT NULL,   -- UUID assigned on receipt
+        InstrumentName    VARCHAR(100)  NOT NULL,   -- lis.instruments[].name
+        RawMessage        VARCHAR(MAX)  NOT NULL,   -- records as received, CR LF separated
+        ParsedJsonMessage VARCHAR(MAX)  NULL,       -- kept from the original table; not written by the code today
+        MessageType       VARCHAR(50)   NULL,       -- RESULT, QC_RESULT, QUERY, ...
+        Status            VARCHAR(20)   NOT NULL CONSTRAINT DF_AnalyzerInboundMessages_Status DEFAULT ('RECEIVED'),
+        ReceivedAt        DATETIME      NULL     CONSTRAINT DF_AnalyzerInboundMessages_ReceivedAt DEFAULT (GETDATE()),
+        ProcessedAt       DATETIME      NULL,
+        PublishedAt       DATETIME      NULL,
+        ErrorMessage      VARCHAR(MAX)  NULL,
+        RemoteAddress     VARCHAR(100)  NULL,       -- analyzer IP:port
+        CONSTRAINT PK_AnalyzerInboundMessages PRIMARY KEY CLUSTERED (Id),
+        CONSTRAINT UQ_AnalyzerInboundMessages_MessageId UNIQUE NONCLUSTERED (MessageId),
         CONSTRAINT CK_AnalyzerInboundMessages_Status
             CHECK (Status IN ('RECEIVED', 'PROCESSED', 'PUBLISHED', 'PUBLISH_RETRY', 'ERROR'))
     );
-    -- retry job and monitoring (findByStatus), cleanup of old PUBLISHED rows, recent per analyzer
+    -- not in the original tables; they serve the retry job (findByStatus), the cleanup of old
+    -- PUBLISHED rows and "recent messages per analyzer"
     CREATE INDEX IX_AnalyzerInboundMessages_Status_ReceivedAt
         ON dbo.AnalyzerInboundMessages (Status, ReceivedAt);
     CREATE INDEX IX_AnalyzerInboundMessages_Status_PublishedAt
@@ -60,23 +68,25 @@ GO
 IF OBJECT_ID(N'dbo.AnalyzerOutboundOrders', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.AnalyzerOutboundOrders (
-        Id               BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_AnalyzerOutboundOrders PRIMARY KEY,
-        MessageId        NVARCHAR(64)   NOT NULL,   -- UUID assigned when consumed from RabbitMQ
-        InstrumentName   NVARCHAR(100)  NOT NULL,   -- from the order JSON instrumentName
-        MessageContent   NVARCHAR(MAX)  NOT NULL,   -- order JSON as received from the Core LIS
-        Status           NVARCHAR(20)   NOT NULL,
-        RetryCount       INT            NOT NULL CONSTRAINT DF_AnalyzerOutboundOrders_RetryCount DEFAULT (0),
-        MaxRetryAttempts INT            NOT NULL CONSTRAINT DF_AnalyzerOutboundOrders_MaxRetry DEFAULT (3),
-        CreatedAt        DATETIME2(3)   NOT NULL,
-        UpdatedAt        DATETIME2(3)   NOT NULL,
-        LastRetryAt      DATETIME2(3)   NULL,
-        NextRetryAt      DATETIME2(3)   NULL,
-        ErrorMessage     NVARCHAR(MAX)  NULL,
-        CONSTRAINT UQ_AnalyzerOutboundOrders_MessageId UNIQUE (MessageId),
+        Id               BIGINT IDENTITY(1,1) NOT NULL,
+        MessageId        VARCHAR(255)  NOT NULL,   -- UUID assigned when consumed from RabbitMQ
+        InstrumentName   VARCHAR(100)  NOT NULL,   -- from the order JSON instrumentName
+        MessageContent   VARCHAR(MAX)  NOT NULL,   -- order JSON as received from the Core LIS
+        Status           VARCHAR(20)   NOT NULL CONSTRAINT DF_AnalyzerOutboundOrders_Status DEFAULT ('PENDING'),
+        RetryCount       INT           NOT NULL CONSTRAINT DF_AnalyzerOutboundOrders_RetryCount DEFAULT (0),
+        MaxRetryAttempts INT           NOT NULL CONSTRAINT DF_AnalyzerOutboundOrders_MaxRetry DEFAULT (5),
+        CreatedAt        DATETIME      NOT NULL CONSTRAINT DF_AnalyzerOutboundOrders_CreatedAt DEFAULT (GETDATE()),
+        UpdatedAt        DATETIME      NOT NULL CONSTRAINT DF_AnalyzerOutboundOrders_UpdatedAt DEFAULT (GETDATE()),
+        LastRetryAt      DATETIME      NULL,
+        NextRetryAt      DATETIME      NULL,
+        ErrorMessage     VARCHAR(MAX)  NULL,
+        CONSTRAINT PK_AnalyzerOutboundOrders PRIMARY KEY CLUSTERED (Id),
+        CONSTRAINT UQ_AnalyzerOutboundOrders_MessageId UNIQUE NONCLUSTERED (MessageId),
         CONSTRAINT CK_AnalyzerOutboundOrders_Status
             CHECK (Status IN ('PENDING', 'PROCESSING', 'SUCCESS', 'FAILED'))
     );
-    -- order retry job (PENDING and due), pending orders per analyzer, cleanup of old SUCCESS rows
+    -- not in the original tables; they serve the order retry job (PENDING and due), pending
+    -- orders per analyzer and the cleanup of old SUCCESS rows
     CREATE INDEX IX_AnalyzerOutboundOrders_Status_NextRetryAt
         ON dbo.AnalyzerOutboundOrders (Status, NextRetryAt) INCLUDE (CreatedAt);
     CREATE INDEX IX_AnalyzerOutboundOrders_Instrument_Status
@@ -103,10 +113,10 @@ GO
   Stop the service first. Replace infinity-lis-shard-1 with the database that held the old tables.
 
   SET IDENTITY_INSERT dbo.AnalyzerInboundMessages ON;
-  INSERT INTO dbo.AnalyzerInboundMessages (Id, MessageId, InstrumentName, RawMessage, MessageType, Status,
-         ReceivedAt, ProcessedAt, PublishedAt, ErrorMessage, RemoteAddress)
-  SELECT Id, MessageId, InstrumentName, RawMessage, MessageType, Status,
-         ReceivedAt, ProcessedAt, PublishedAt, ErrorMessage, RemoteAddress
+  INSERT INTO dbo.AnalyzerInboundMessages (Id, MessageId, InstrumentName, RawMessage, ParsedJsonMessage,
+         MessageType, Status, ReceivedAt, ProcessedAt, PublishedAt, ErrorMessage, RemoteAddress)
+  SELECT Id, MessageId, InstrumentName, RawMessage, ParsedJsonMessage,
+         MessageType, Status, ReceivedAt, ProcessedAt, PublishedAt, ErrorMessage, RemoteAddress
   FROM [infinity-lis-shard-1].dbo.ASTMServerMessages;
   SET IDENTITY_INSERT dbo.AnalyzerInboundMessages OFF;
 
