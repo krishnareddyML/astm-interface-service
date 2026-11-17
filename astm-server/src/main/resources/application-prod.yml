@@ -1,6 +1,6 @@
 # Production profile.
 # All secrets MUST be provided through environment variables (no defaults here):
-#   DB_HOST, DB_NAME, DB_USERNAME, DB_PASSWORD
+#   ASTM_DB_HOST, ASTM_DB_NAME, ASTM_DB_USERNAME, ASTM_DB_PASSWORD (DB_* also accepted)
 #   RABBITMQ_HOST, RABBITMQ_PORT, RABBITMQ_VHOST, RABBITMQ_USERNAME, RABBITMQ_PASSWORD
 # Spring profile YAML lists are replaced, not merged, so every instrument must be fully
 # described here (name, port, driverClassName and queue settings).
@@ -44,9 +44,9 @@ log_path: ${LOG_PATH:D:/astm-interface-services-data/logs}
 
 spring:
   datasource:
-    url: jdbc:sqlserver://${DB_HOST}:1433;databaseName=${DB_NAME:infinity-lis-astm-prod};encrypt=true;trustServerCertificate=false
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: jdbc:sqlserver://${ASTM_DB_HOST:${DB_HOST}}:1433;databaseName=${ASTM_DB_NAME:${DB_NAME:infinity-lis-astm-prod}};encrypt=true;trustServerCertificate=false
+    username: ${ASTM_DB_USERNAME:${DB_USERNAME}}
+    password: ${ASTM_DB_PASSWORD:${DB_PASSWORD}}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
     hikari:
       maximum-pool-size: 20

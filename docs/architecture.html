@@ -686,7 +686,7 @@ FROM AnalyzerOutboundOrders ORDER BY Id DESC;</code></pre>
       <tr><td><code>prod</code></td><td><code>infinity-lis-prod</code></td><td>DB <code>infinity-lis-astm-prod</code>; no defaults for secrets; Sysmex off unless <code>SYSMEX_XN_ENABLED=true</code></td></tr>
     </tbody>
   </table></div>
-  <p><strong>Environment variables:</strong> <code>DB_PASSWORD</code> (always), <code>RABBITMQ_PASSWORD</code> (always, user <code>astm-server</code>), optional <code>DB_HOST</code>, <code>DB_NAME</code>, <code>DB_USERNAME</code>, <code>RABBITMQ_HOST</code>, <code>RABBITMQ_PORT</code>, <code>RABBITMQ_VHOST</code>, <code>RABBITMQ_USERNAME</code>, <code>ORTHO_VISION_PORT</code>, <code>SYSMEX_XN_PORT</code>, <code>LOG_PATH</code>. Spring YAML lists replace each other, so every profile lists every instrument in full.</p>
+  <p><strong>Environment variables:</strong> <code>ASTM_DB_PASSWORD</code> (always), <code>RABBITMQ_PASSWORD</code> (always, user <code>astm-server</code>), optional <code>ASTM_DB_HOST</code>, <code>ASTM_DB_NAME</code>, <code>ASTM_DB_USERNAME</code> (the older <code>DB_*</code> names are still accepted as a fallback; the <code>ASTM_</code> prefix keeps them apart from Core LIS variables on a shared host), <code>RABBITMQ_HOST</code>, <code>RABBITMQ_PORT</code>, <code>RABBITMQ_VHOST</code>, <code>RABBITMQ_USERNAME</code>, <code>ORTHO_VISION_PORT</code>, <code>SYSMEX_XN_PORT</code>, <code>LOG_PATH</code>. Spring YAML lists replace each other, so every profile lists every instrument in full.</p>
   <pre><code>lis:
   instruments:
     - name: SysmexXN                      # identity: orders must carry this name

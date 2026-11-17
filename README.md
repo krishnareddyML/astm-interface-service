@@ -209,8 +209,8 @@ Secrets are **not** stored in the repository. Set them in the environment (or in
 `./config/application-local.yml` next to the jar, which Spring Boot loads automatically):
 
 ```powershell
-set DB_PASSWORD=...            # required in every profile
-set DB_HOST=192.168.20.123     # optional overrides: DB_NAME, DB_USERNAME
+set ASTM_DB_PASSWORD=...       # required in every profile (DB_PASSWORD also accepted)
+set ASTM_DB_HOST=192.168.20.123 # optional overrides: ASTM_DB_NAME, ASTM_DB_USERNAME
 set RABBITMQ_PASSWORD=...      # RABBITMQ_HOST, RABBITMQ_PORT, RABBITMQ_VHOST, RABBITMQ_USERNAME
 ```
 
@@ -287,10 +287,10 @@ mvn spring-boot:repackage
 ```powershell
 # Required production environment variables (no defaults exist in application-prod.yml)
 set SPRING_PROFILES_ACTIVE=prod
-set DB_HOST=prod-sql-server.company.com
-set DB_NAME=infinity-lis-astm-prod
-set DB_USERNAME=astm-server
-set DB_PASSWORD=<secret>
+set ASTM_DB_HOST=prod-sql-server.company.com
+set ASTM_DB_NAME=infinity-lis-astm-prod
+set ASTM_DB_USERNAME=astm-server
+set ASTM_DB_PASSWORD=<secret>
 set RABBITMQ_HOST=prod-rabbitmq.company.com
 set RABBITMQ_VHOST=infinity-lis-prod
 set RABBITMQ_USERNAME=astm-server

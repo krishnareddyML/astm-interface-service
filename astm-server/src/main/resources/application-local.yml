@@ -1,5 +1,5 @@
 # Local development profile.
-# Secrets come from environment variables; set DB_PASSWORD before starting.
+# Secrets come from environment variables; set ASTM_DB_PASSWORD (or DB_PASSWORD) before starting.
 lis:
   instruments:
     - name: OrthoVision
@@ -42,9 +42,9 @@ log_path: ${LOG_PATH:D:/astm-interface-services-data/logs}
 
 spring:
   datasource:
-    url: jdbc:sqlserver://${DB_HOST:192.168.20.123}:1433;databaseName=${DB_NAME:infinity-lis-astm-dev};trustServerCertificate=true
-    username: ${DB_USERNAME:medsa}
-    password: ${DB_PASSWORD}
+    url: jdbc:sqlserver://${ASTM_DB_HOST:${DB_HOST:192.168.20.123}}:1433;databaseName=${ASTM_DB_NAME:${DB_NAME:infinity-lis-astm-dev}};trustServerCertificate=true
+    username: ${ASTM_DB_USERNAME:${DB_USERNAME:medsa}}
+    password: ${ASTM_DB_PASSWORD:${DB_PASSWORD}}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
     hikari:
       maximumPoolSize: 5

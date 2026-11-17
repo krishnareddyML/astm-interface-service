@@ -25,7 +25,7 @@ The deeper single-topic documents in `docs/` must agree with the page.
 ## Database (own ASTM database, not shared with Core LIS)
 
 SQL Server database `infinity-lis-astm-<env>` (`-dev` for local and dev, `-stage`, `-prod`; override
-with `DB_NAME`). Only this service uses it. Tables: `AnalyzerInboundMessages` (everything analyzers
+with `ASTM_DB_NAME`). Only this service uses it. Tables: `AnalyzerInboundMessages` (everything analyzers
 send) and `AnalyzerOutboundOrders` (orders waiting for an analyzer); formerly `ASTMServerMessages` /
 `ASTMOrderMessages` in the Core LIS database. The app never creates tables: the schema lives in
 `astm-server/src/main/resources/db/astm-schema.sql`. A column or table change updates that script and
@@ -43,7 +43,7 @@ mvn -q -pl astm-server test   # server tests only
 
 Tests need no database or broker: protocol tests use a real socket pair with a fake instrument,
 handler tests mock the persistence layer. Running the server itself needs SQL Server and RabbitMQ
-plus `DB_PASSWORD` (see README). Do not commit passwords; profiles read them from the environment.
+plus `ASTM_DB_PASSWORD` (see README; `ASTM_DB_HOST`, `ASTM_DB_NAME`, `ASTM_DB_USERNAME` optional, `DB_*` still accepted). Do not commit passwords; profiles read them from the environment.
 
 ## Key code paths
 

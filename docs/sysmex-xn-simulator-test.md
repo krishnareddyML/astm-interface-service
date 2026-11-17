@@ -33,10 +33,10 @@ Artifacts:
 ## 2. Configure secrets for this window
 
 ```powershell
-$env:DB_PASSWORD = "<database password>"
+$env:ASTM_DB_PASSWORD = "<database password>"
 $env:RABBITMQ_PASSWORD = "<password of the astm-server RabbitMQ user>"
 # only if they differ from the profile defaults:
-# $env:DB_HOST = "192.168.20.123"; $env:DB_NAME = "infinity-lis-astm-dev"; $env:DB_USERNAME = "medsa"
+# $env:ASTM_DB_HOST = "192.168.20.123"; $env:ASTM_DB_NAME = "infinity-lis-astm-dev"; $env:ASTM_DB_USERNAME = "medsa"
 # $env:RABBITMQ_HOST = "192.168.20.254"; $env:RABBITMQ_VHOST = "infinity-lis-dev"; $env:RABBITMQ_USERNAME = "astm-server"
 ```
 
